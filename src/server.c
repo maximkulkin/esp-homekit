@@ -2114,6 +2114,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     break;
                 }
             }
+
+            homekit_characteristic_notify(ch);
         }
 
         cJSON *j_events = cJSON_GetObjectItem(j_ch, "ev");
@@ -2759,9 +2761,10 @@ static void run_server(server_t *server)
         int s = accept(listenfd, (struct sockaddr *)NULL, (socklen_t *)NULL);
         if (s >= 0) {
             DEBUG("Got new client connection");
-            const struct timeval timeout = { 10, 0 }; /* 10 second timeout */
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+            const struct timeval sndtimeout = { 10, 0 }; /* 10 second timeout */
+            const struct timeval rcvtimeout = { 1, 0 }; /* 1 second timeout */
+            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
+            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &sndtimeout, sizeof(sndtimeout));
 
             client_context_t *context = client_context_new();
             context->server = server;
