@@ -23,7 +23,7 @@
 #include "query_params.h"
 #include "debug.h"
 
-#include "homekit/types.h"
+#include "homekit/homekit.h"
 #include "homekit/characteristics.h"
 
 
@@ -72,17 +72,17 @@ typedef struct {
     char *accessory_id;
     ed25519_key *accessory_key;
 
-    homekit_accessory_t **accessories;
+    homekit_server_config_t *config;
 
     bool paired;
     pairing_context_t *pairing_context;
 
     client_context_t *clients;
-} server_t;
+} homekit_server_t;
 
 
 struct _client_context_t {
-    server_t *server;
+    homekit_server_t *server;
     int socket;
     homekit_endpoint_t endpoint;
     query_param_t *endpoint_params;
@@ -112,11 +112,11 @@ void client_context_free(client_context_t *c);
 void pairing_context_free(pairing_context_t *context);
 
 
-server_t *server_new() {
-    server_t *server = malloc(sizeof(server_t));
+homekit_server_t *server_new() {
+    homekit_server_t *server = malloc(sizeof(homekit_server_t));
     server->accessory_id = NULL;
     server->accessory_key = NULL;
-    server->accessories = NULL;
+    server->config = NULL;
     server->paired = false;
     server->pairing_context = NULL;
     server->clients = NULL;
@@ -124,7 +124,7 @@ server_t *server_new() {
 }
 
 
-void server_free(server_t *server) {
+void server_free(homekit_server_t *server) {
     if (server->accessory_id)
         free(server->accessory_id);
 
@@ -836,7 +836,7 @@ void homekit_server_on_identify(client_context_t *context) {
     }
 
     homekit_characteristic_t *ch_identify =
-        homekit_characteristic_find_by_type(context->server->accessories, 1, HOMEKIT_CHARACTERISTIC_IDENTIFY);
+        homekit_characteristic_find_by_type(context->server->config->accessories, 1, HOMEKIT_CHARACTERISTIC_IDENTIFY);
     if (!ch_identify) {
         send_json_error_response(context, 400, HAPStatus_InsufficientPrivileges);
         return;
@@ -1757,7 +1757,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     cJSON *j_accessories = cJSON_CreateArray();
     cJSON_AddItemToObject(json, "accessories", j_accessories);
 
-    for (homekit_accessory_t **accessory_it = context->server->accessories; *accessory_it; accessory_it++) {
+    for (homekit_accessory_t **accessory_it = context->server->config->accessories; *accessory_it; accessory_it++) {
         homekit_accessory_t *accessory = *accessory_it;
 
         cJSON *j_accessory = cJSON_CreateObject();
@@ -1869,7 +1869,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         int iid = atoi(dot+1);
 
         DEBUG("Requested characteristic info for %d.%d", aid, iid);
-        homekit_characteristic_t *ch = homekit_characteristic_find_by_id(context->server->accessories, aid, iid);
+        homekit_characteristic_t *ch = homekit_characteristic_find_by_id(context->server->config->accessories, aid, iid);
         if (!ch) {
             cJSON_AddItemToArray(
                 characteristics,
@@ -1961,7 +1961,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         int iid = j_iid->valueint;
 
         homekit_characteristic_t *ch = homekit_characteristic_find_by_id(
-            context->server->accessories, aid, iid
+            context->server->config->accessories, aid, iid
         );
         if (!ch) {
             DEBUG("Failed to process request to update %d.%d: "
@@ -2733,7 +2733,7 @@ static void homekit_client_task(void *_context) {
     }
 
     homekit_accessories_clear_notify_callbacks(
-        context->server->accessories,
+        context->server->config->accessories,
         client_notify_characteristic,
         context
     );
@@ -2744,7 +2744,7 @@ static void homekit_client_task(void *_context) {
 }
 
 
-static void run_server(server_t *server)
+static void run_server(homekit_server_t *server)
 {
     DEBUG("Staring HTTP server");
 
@@ -2785,11 +2785,11 @@ static void run_server(server_t *server)
 }
 
 
-void homekit_setup_mdns(server_t *server) {
+void homekit_setup_mdns(homekit_server_t *server) {
     DEBUG("Configuring mDNS");
 
-    homekit_accessory_t *accessory = server->accessories[0];
-    homekit_characteristic_t *name = homekit_characteristic_find_by_type(server->accessories, 1, HOMEKIT_CHARACTERISTIC_NAME);
+    homekit_accessory_t *accessory = server->config->accessories[0];
+    homekit_characteristic_t *name = homekit_characteristic_find_by_type(server->config->accessories, 1, HOMEKIT_CHARACTERISTIC_NAME);
     if (!name) {
         DEBUG("Invalid accessory declaration: "
               "no Name characteristic in AccessoryInfo service");
@@ -2856,7 +2856,7 @@ ed25519_key *homekit_accessory_key_generate() {
 }
 
 void homekit_server_task(void *args) {
-    server_t *server = args;
+    homekit_server_t *server = args;
     DEBUG("Starting server");
 
     int r = homekit_storage_init();
@@ -2890,11 +2890,16 @@ void homekit_server_task(void *args) {
     run_server(server);
 }
 
-void homekit_server_init(homekit_accessory_t **accessories) {
-    homekit_accessories_init(accessories);
+void homekit_server_init(homekit_server_config_t *config) {
+    if (!config->accessories) {
+        DEBUG("Error initializing HomeKit accessory server: accessories are not specified");
+        return;
+    }
 
-    server_t *server = server_new();
-    server->accessories = accessories;
+    homekit_accessories_init(config->accessories);
+
+    homekit_server_t *server = server_new();
+    server->config = config;
 
     xTaskCreate(homekit_server_task, "HomeKit Server", 1700, server, 1, NULL);
 }
