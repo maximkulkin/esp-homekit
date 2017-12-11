@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -879,7 +880,28 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
             DEBUG("Initializing crypto");
             DEBUG("Free heap: %d", xPortGetFreeHeapSize());
-            crypto_srp_init(context->server->pairing_context->srp, "Pair-Setup", "111-11-111");
+
+            char password[11];
+            if (context->server->config->password) {
+                strncpy(password, context->server->config->password, sizeof(password));
+                DEBUG("Using user-specified password: %s", password);
+            } else {
+                for (int i=0; i<10; i++) {
+                    password[i] = hwrand() % 10 + '0';
+                }
+                password[3] = password[6] = '-';
+                password[10] = 0;
+                DEBUG("Using random password: %s", password);
+            }
+
+            if (context->server->config->password_callback) {
+                context->server->config->password_callback(password);
+            }
+
+            crypto_srp_init(
+                context->server->pairing_context->srp,
+                "Pair-Setup", password
+            );
 
             if (context->server->pairing_context->public_key) {
                 free(context->server->pairing_context->public_key);
@@ -2890,10 +2912,31 @@ void homekit_server_task(void *args) {
     run_server(server);
 }
 
+#define ISDIGIT(x) isdigit((unsigned char)(x))
+
 void homekit_server_init(homekit_server_config_t *config) {
     if (!config->accessories) {
-        DEBUG("Error initializing HomeKit accessory server: accessories are not specified");
+        DEBUG("Error initializing HomeKit accessory server: "
+              "accessories are not specified");
         return;
+    }
+
+    if (!config->password && !config->password_callback) {
+        DEBUG("Error initializing HomeKit accessory server: "
+              "neither password nor password callback is specified");
+        return;
+    }
+
+    if (config->password) {
+        const char *p = config->password;
+        if (strlen(p) != 10 ||
+                !(ISDIGIT(p[0]) && ISDIGIT(p[1]) && ISDIGIT(p[2]) && p[3] == '-' &&
+                    ISDIGIT(p[4]) && ISDIGIT(p[5]) && p[6] == '-' &&
+                    ISDIGIT(p[7]) && ISDIGIT(p[8]) && ISDIGIT(p[9]))) {
+            DEBUG("Error initializing HomeKit accessory server: "
+                  "invalid password format");
+            return;
+        }
     }
 
     homekit_accessories_init(config->accessories);
