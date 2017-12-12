@@ -33,7 +33,9 @@ char *binary_to_string(const byte *data, size_t size) {
 
 
 void print_binary(const char *prompt, const byte *data, size_t size) {
+#ifdef HOMEKIT_DEBUG
     char *buffer = binary_to_string(data, size);
     printf("%s (%d bytes): \"%s\"\n", prompt, (int)size, buffer);
     free(buffer);
+#endif
 }
