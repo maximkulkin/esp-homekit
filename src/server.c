@@ -158,29 +158,6 @@ void tlv_debug(const tlv_values_t *values) {
 }
 
 
-void mdns_txt_add(char* txt, size_t txt_size, const char* key, const char* value)
-{
-    size_t txt_len = strlen(txt),
-           key_len = strlen(key),
-           value_len = strlen(value);
-
-    size_t extra_len = key_len + value_len + 1;  // extra 1 is for equals sign
-
-    if (extra_len > 255) {
-        printf(">>> mdns_txt_add: key %s section is longer than 255\n", key);
-        return;
-    }
-
-    if (txt_len + extra_len + 2 > txt_size) {  // extra 2 is for length and terminator
-        printf(">>> mdns_txt_add: not enough space to add TXT key %s\n", key);
-        return;
-    }
-
-    txt[txt_len] = extra_len;
-    snprintf(txt + txt_len + 1, txt_size - txt_len, "%s=%s", key, value);
-}
-
-
 typedef enum {
     TLVType_Method = 0,        // (integer) Method to use for pairing. See PairMethod
     TLVType_Identifier = 1,    // (UTF-8) Identifier for authentication
@@ -622,6 +599,9 @@ int client_decrypt(
 
     return payload_offset;
 }
+
+
+void homekit_setup_mdns(homekit_server_t *server);
 
 
 void client_notify_characteristic(homekit_characteristic_t *ch, void *context) {
@@ -1330,6 +1310,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             context->server->pairing_context = NULL;
 
             context->server->paired = 1;
+            homekit_setup_mdns(context->server);
 
             break;
         }
@@ -2358,14 +2339,15 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             );
 
             pairing_t *pairing = homekit_storage_find_pairing(device_identifier);
-            free(device_identifier);
 
             if (pairing) {
+                bool is_admin = pairing->permissions & 1;
                 pairing_free(pairing);
 
                 r = homekit_storage_remove_pairing(device_identifier);
                 if (r) {
                     DEBUG("Failed to remove pairing: storage error (code %d)", r);
+                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
@@ -2376,7 +2358,32 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                         c->disconnect = true;
                     c = c->next;
                 }
+
+                if (is_admin) {
+                    // Removed pairing was admin,
+                    // check if there any other admins left.
+                    // If no admins left, enable pairing again
+                    pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
+                    pairing_t *pairing;
+                    while ((pairing = homekit_storage_next_pairing(pairing_it))) {
+                        if (pairing->permissions & 1) {
+                            break;
+                        }
+                        pairing_free(pairing);
+                    };
+                    homekit_storage_pairing_iterator_free(pairing_it);
+
+                    if (!pairing) {
+                        // No admins left, enable pairing again
+                        context->server->paired = false;
+                        homekit_setup_mdns(context->server);
+                    } else {
+                        pairing_free(pairing);
+                    }
+                }
             }
+
+            free(device_identifier);
 
             tlv_values_t *response = tlv_new();
             tlv_add_integer_value(response, TLVType_State, 2);
@@ -2394,6 +2401,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 send_tlv_error_response(context, 2, TLVError_Authentication);
                 break;
             }
+
+            free(device_identifier);
 
             tlv_values_t *response = tlv_new();
             tlv_add_integer_value(response, TLVType_State, 2);
@@ -2420,9 +2429,9 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
                 pairing_free(pairing);
             }
+            homekit_storage_pairing_iterator_free(it);
 
             free(public_key);
-            homekit_storage_pairing_iterator_free(it);
 
             send_tlv_response(context, response);
 
@@ -2818,39 +2827,38 @@ void homekit_setup_mdns(homekit_server_t *server) {
         return;
     }
 
-    mdns_init();
-
     char txt_rec[128];
     txt_rec[0] = 0;
 
     char buffer[32];
     // accessory model name (required)
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "md", name->string_value);
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "md", name->string_value);
     // protocol version (required)
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "pv", "1.0");
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "pv", "1.0");
     // device ID (required)
     // should be in format XX:XX:XX:XX:XX:XX, otherwise devices will ignore it
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "id", server->accessory_id);
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "id", server->accessory_id);
     // current configuration number (required)
     snprintf(buffer, sizeof(buffer), "%d", accessory->config_number);
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "c#", buffer);
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "c#", buffer);
     // current state number (required)
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "s#", "1");
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "s#", "1");
     // feature flags (required if non-zero)
     //   bit 0 - supports HAP pairing. required for all HomeKit accessories
     //   bits 1-7 - reserved
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "ff", "0");
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "ff", "0");
     // status flags
     //   bit 0 - not paired
     //   bit 1 - not configured to join WiFi
     //   bit 2 - problem detected on accessory
     //   bits 3-7 - reserved
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "sf", (server->paired) ? "0" : "1");
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "sf", (server->paired) ? "0" : "1");
     // accessory category identifier
     snprintf(buffer, sizeof(buffer), "%d", accessory->category);
-    mdns_txt_add(txt_rec, sizeof(txt_rec), "ci", buffer);
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "ci", buffer);
 
-    mdns_add_facility(name->string_value, "hap", txt_rec, mdns_TCP, PORT, 60);
+    mdns_clear();
+    mdns_add_facility(name->string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
 }
 
 char *homekit_accessory_id_generate() {
@@ -2896,17 +2904,21 @@ void homekit_server_task(void *args) {
     }
 
     pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
-    pairing_t *pairing = homekit_storage_next_pairing(pairing_it);
+    pairing_t *pairing;
+    while ((pairing = homekit_storage_next_pairing(pairing_it))) {
+        if (pairing->permissions & 1) {
+            break;
+        }
+        pairing_free(pairing);
+    }
     homekit_storage_pairing_iterator_free(pairing_it);
 
     if (pairing) {
         pairing_free(pairing);
-
         server->paired = true;
     }
 
-    DEBUG("Using accessory ID: %s", server->accessory_id);
-
+    mdns_init();
     homekit_setup_mdns(server);
 
     run_server(server);
