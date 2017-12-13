@@ -651,6 +651,11 @@ void send_204_response(client_context_t *context) {
     client_send(context, (byte *)response, sizeof(response)-1);
 }
 
+void send_404_response(client_context_t *context) {
+    static char response[] = "HTTP/1.1 404 Not Found\r\n\r\n";
+    client_send(context, (byte *)response, sizeof(response)-1);
+}
+
 
 void send_characteristic_event(client_context_t *context, homekit_characteristic_t *ch) {
     CLIENT_DEBUG(context, "Sending EVENT");
@@ -2516,8 +2521,9 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
     }
 
     if (context->endpoint == HOMEKIT_ENDPOINT_UNKNOWN) {
-        parser->status_code = 404;
-        return -1;
+        char *url = strndup(data, length);
+        ERROR("Unknown endpoint: %s %s", http_method_str(parser->method), url);
+        free(url);
     }
 
     return 0;
@@ -2569,7 +2575,8 @@ int homekit_server_on_message_complete(http_parser *parser) {
             break;
         }
         case HOMEKIT_ENDPOINT_UNKNOWN: {
-            // TODO: do not do anything
+            DEBUG("Unknown endpoint");
+            send_404_response(context);
             break;
         }
     }
