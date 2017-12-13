@@ -2475,7 +2475,9 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 void homekit_server_on_reset(client_context_t *context) {
     INFO("Reset");
 
-    homekit_storage_init();
+    homekit_storage_reset();
+    send_204_response(context);
+
     sdk_system_restart();
 }
 
