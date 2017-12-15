@@ -109,6 +109,12 @@ struct _client_context_t {
 };
 
 
+typedef struct {
+    const homekit_characteristic_t *characteristic;
+    homekit_value_t value;
+} characteristic_event_t;
+
+
 void client_context_free(client_context_t *c);
 void pairing_context_free(pairing_context_t *context);
 
@@ -293,7 +299,7 @@ client_context_t *client_context_new() {
 
     c->disconnect = false;
 
-    c->event_queue = xQueueCreate(20, sizeof(homekit_characteristic_t*));
+    c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t*));
     c->verify_context = NULL;
 
     c->next = NULL;
@@ -347,7 +353,7 @@ void pairing_context_free(pairing_context_t *context) {
 }
 
 
-void client_notify_characteristic(homekit_characteristic_t *ch, void *client);
+void client_notify_characteristic(const homekit_characteristic_t *ch, homekit_value_t value, void *client);
 
 
 typedef enum {
@@ -358,7 +364,7 @@ typedef enum {
 } characteristic_format_t;
 
 
-cJSON *characteristic_to_json(client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format) {
+cJSON *characteristic_to_json(client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
     cJSON *j_ch = cJSON_CreateObject();
     cJSON_AddNumberToObject(j_ch, "aid", ch->service->accessory->id);
     cJSON_AddNumberToObject(j_ch, "iid", ch->id);
@@ -439,7 +445,7 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
 
     cJSON *j_value = NULL;
     if (ch->permissions & homekit_permissions_paired_read) {
-        homekit_value_t v = ch->getter ? ch->getter() : ch->value;
+        homekit_value_t v = value ? *value : (ch->getter ? ch->getter() : ch->value);
 
         if (v.is_null) {
             // j_value = cJSON_CreateNull();
@@ -603,10 +609,18 @@ int client_decrypt(
 void homekit_setup_mdns(homekit_server_t *server);
 
 
-void client_notify_characteristic(homekit_characteristic_t *ch, void *context) {
+void client_notify_characteristic(const homekit_characteristic_t *ch, homekit_value_t value, void *context) {
+    DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
+
     client_context_t *client = context;
     if (client->event_queue) {
-        xQueueSendToBack(client->event_queue, &ch, 10);
+        characteristic_event_t *event = malloc(sizeof(characteristic_event_t));
+        event->characteristic = ch;
+        homekit_value_copy(&event->value, &value);
+
+        DEBUG("Sending event to client %d", client->socket);
+
+        xQueueSendToBack(client->event_queue, &event, 10);
     }
 }
 
@@ -647,14 +661,14 @@ void send_404_response(client_context_t *context) {
 }
 
 
-void send_characteristic_event(client_context_t *context, homekit_characteristic_t *ch) {
+void send_characteristic_event(client_context_t *context, const homekit_characteristic_t *ch, const homekit_value_t value) {
     CLIENT_DEBUG(context, "Sending EVENT");
 
     cJSON *json = cJSON_CreateObject();
     cJSON *characteristics = cJSON_CreateArray();
     cJSON_AddItemToObject(json, "characteristics", characteristics);
 
-    cJSON *ch_json = characteristic_to_json(context, ch, 0);
+    cJSON *ch_json = characteristic_to_json(context, ch, 0, &value);
     cJSON_AddItemToArray(characteristics, ch_json);
 
     char *payload = cJSON_PrintUnformatted(json);
@@ -1812,7 +1826,8 @@ void homekit_server_on_get_accessories(client_context_t *context) {
                           characteristic_format_type
                         | characteristic_format_meta
                         | characteristic_format_perms
-                        | characteristic_format_events
+                        | characteristic_format_events,
+                        NULL
                     )
                 );
             }
@@ -1906,7 +1921,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
             continue;
         }
 
-        cJSON *ch_json = characteristic_to_json(context, ch, format);
+        cJSON *ch_json = characteristic_to_json(context, ch, format, NULL);
         cJSON_AddItemToArray(characteristics, ch_json);
     }
 
@@ -2704,9 +2719,19 @@ static void homekit_client_task(void *_context) {
             break;
         }
 
-        homekit_characteristic_t *ch = NULL;
-        while (xQueueReceive(context->event_queue, &ch, 0)) {
-            send_characteristic_event(context, ch);
+        characteristic_event_t *event = NULL;
+        while (xQueueReceive(context->event_queue, &event, 0)) {
+            CLIENT_DEBUG(
+                context,
+                "Received event for %d.%d",
+                event->characteristic->service->accessory->id,
+                event->characteristic->id
+            );
+            send_characteristic_event(context, event->characteristic, event->value);
+
+            CLIENT_DEBUG(context, "Freeing event");
+            homekit_value_destruct(&event->value);
+            free(event);
         }
 
         int data_len = lwip_read(context->socket, data+available, data_size-available);

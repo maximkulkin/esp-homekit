@@ -110,7 +110,7 @@ void homekit_value_free(homekit_value_t *value);
 */
 
 
-typedef void (*homekit_characteristic_change_callback_fn)(const homekit_characteristic_t *ch, void *context);
+typedef void (*homekit_characteristic_change_callback_fn)(const homekit_characteristic_t *ch, const homekit_value_t value, void *context);
 
 typedef struct _homekit_characteristic_change_callback {
     homekit_characteristic_change_callback_fn function;
