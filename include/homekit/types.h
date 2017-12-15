@@ -161,7 +161,7 @@ struct _homekit_characteristic {
     homekit_value_t (*getter)();
     void (*setter)(const homekit_value_t);
 
-    homekit_characteristic_change_callback_t *callbacks;
+    homekit_characteristic_change_callback_t *callback;
 };
 
 struct _homekit_service {

@@ -158,7 +158,7 @@ homekit_characteristic_t *homekit_characteristic_find_by_type(homekit_accessory_
 
 
 void homekit_characteristic_notify(const homekit_characteristic_t *ch, homekit_value_t value) {
-    homekit_characteristic_change_callback_t *callback = ch->callbacks;
+    homekit_characteristic_change_callback_t *callback = ch->callback;
     while (callback) {
         callback->function(ch, value, callback->context);
         callback = callback->next;
@@ -203,20 +203,20 @@ void homekit_characteristic_remove_notify_callback(
     homekit_characteristic_change_callback_fn function,
     void *context
 ) {
-    while (ch->callbacks) {
-        if (ch->callbacks->function != function || ch->callbacks->context != context) {
+    while (ch->callback) {
+        if (ch->callback->function != function || ch->callback->context != context) {
             break;
         }
 
-        homekit_characteristic_change_callback_t *c = ch->callbacks->next;
-        ch->callbacks = ch->callbacks->next;
+        homekit_characteristic_change_callback_t *c = ch->callback->next;
+        ch->callback = ch->callback->next;
         free(c);
     }
 
-    if (!ch->callbacks)
+    if (!ch->callback)
         return;
 
-    homekit_characteristic_change_callback_t *callback = ch->callbacks;
+    homekit_characteristic_change_callback_t *callback = ch->callback;
     while (callback->next) {
         if (callback->next->function == function && callback->next->context == context) {
             homekit_characteristic_change_callback_t *c = callback->next;
@@ -255,7 +255,7 @@ bool homekit_characteristic_has_notify_callback(
     homekit_characteristic_change_callback_fn function,
     void *context
 ) {
-    homekit_characteristic_change_callback_t *callback = ch->callbacks;
+    homekit_characteristic_change_callback_t *callback = ch->callback;
     while (callback) {
         if (callback->function == function && callback->context == context)
             return true;
