@@ -1171,8 +1171,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             free(device_info);
 
             char *device_id = strndup((const char *)tlv_device_id->value, tlv_device_id->size);
-            // TODO: replace with a bit
-            r = homekit_storage_add_pairing(device_id, device_key, 1); // 1 for admin
+
+            r = homekit_storage_add_pairing(device_id, device_key, pairing_permissions_admin);
             if (r) {
                 CLIENT_ERROR(context, "Failed to store pairing (code %d)", r);
 
@@ -2225,7 +2225,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
         case TLVMethod_AddPairing: {
             CLIENT_INFO(context, "Add Pairing");
 
-            if (!(context->permissions & 1)) {
+            if (!(context->permissions & pairing_permissions_admin)) {
                 CLIENT_ERROR(context, "Refusing to add pairing to non-admin controller");
                 send_tlv_error_response(context, 2, TLVError_Authentication);
                 break;
@@ -2343,7 +2343,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
         case TLVMethod_RemovePairing: {
             CLIENT_INFO(context, "Remove Pairing");
 
-            if (!(context->permissions & 1)) {
+            if (!(context->permissions & pairing_permissions_admin)) {
                 CLIENT_ERROR(context, "Refusing to remove pairing to non-admin controller");
                 send_tlv_error_response(context, 2, TLVError_Authentication);
                 break;
@@ -2364,7 +2364,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             pairing_t *pairing = homekit_storage_find_pairing(device_identifier);
 
             if (pairing) {
-                bool is_admin = pairing->permissions & 1;
+                bool is_admin = pairing->permissions & pairing_permissions_admin;
                 pairing_free(pairing);
 
                 r = homekit_storage_remove_pairing(device_identifier);
@@ -2391,7 +2391,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                     pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
                     pairing_t *pairing;
                     while ((pairing = homekit_storage_next_pairing(pairing_it))) {
-                        if (pairing->permissions & 1) {
+                        if (pairing->permissions & pairing_permissions_admin) {
                             break;
                         }
                         pairing_free(pairing);
@@ -2423,7 +2423,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
         case TLVMethod_ListPairings: {
             CLIENT_INFO(context, "List Pairings");
 
-            if (!(context->permissions & 1)) {
+            if (!(context->permissions & pairing_permissions_admin)) {
                 CLIENT_INFO(context, "Refusing to list pairings to non-admin controller");
                 send_tlv_error_response(context, 2, TLVError_Authentication);
                 break;
@@ -2932,7 +2932,7 @@ void homekit_server_task(void *args) {
     pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
     pairing_t *pairing;
     while ((pairing = homekit_storage_next_pairing(pairing_it))) {
-        if (pairing->permissions & 1) {
+        if (pairing->permissions & pairing_permissions_admin) {
             break;
         }
         pairing_free(pairing);
