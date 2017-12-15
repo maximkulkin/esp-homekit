@@ -3,6 +3,76 @@
 #include <homekit/types.h>
 
 
+void homekit_value_copy(homekit_value_t *dst, homekit_value_t *src) {
+    memset(dst, 0, sizeof(*dst));
+
+    dst->format = src->format;
+    dst->is_null = src->is_null;
+
+    if (!src->is_null) {
+        switch (src->format) {
+            case homekit_format_bool:
+                dst->bool_value = src->bool_value;
+                break;
+            case homekit_format_uint8:
+            case homekit_format_uint16:
+            case homekit_format_uint32:
+            case homekit_format_uint64:
+            case homekit_format_int:
+                dst->int_value = src->int_value;
+                break;
+            case homekit_format_float:
+                dst->float_value = src->float_value;
+                break;
+            case homekit_format_string:
+                if (src->is_static) {
+                    dst->string_value = src->string_value;
+                    dst->is_static = true;
+                } else {
+                    dst->string_value = strdup(src->string_value);
+                }
+                break;
+            case homekit_format_tlv:
+            case homekit_format_data:
+                // TODO:
+                break;
+            default:
+                // unknown format
+                break;
+        }
+    }
+}
+
+
+homekit_value_t *homekit_value_clone(homekit_value_t *value) {
+    homekit_value_t *copy = malloc(sizeof(homekit_value_t));
+    homekit_value_copy(copy, value);
+    return copy;
+}
+
+void homekit_value_destruct(homekit_value_t *value) {
+    if (!value->is_null) {
+        switch (value->format) {
+            case homekit_format_string:
+                if (!value->is_static && value->string_value)
+                    free(value->string_value);
+                break;
+            case homekit_format_tlv:
+            case homekit_format_data:
+                // TODO:
+                break;
+            default:
+                // unknown format
+                break;
+        }
+    }
+}
+
+void homekit_value_free(homekit_value_t *value) {
+    homekit_value_destruct(value);
+    free(value);
+}
+
 void homekit_accessories_init(homekit_accessory_t **accessories) {
     int aid = 1;
     for (homekit_accessory_t **accessory_it = accessories; *accessory_it; accessory_it++) {
@@ -34,6 +104,8 @@ void homekit_accessories_init(homekit_accessory_t **accessories) {
                 } else {
                     ch->id = iid++;
                 }
+
+                ch->value.format = ch->format;
             }
         }
     }
@@ -96,7 +168,7 @@ void homekit_characteristic_notify(homekit_characteristic_t *ch) {
 
 void homekit_characteristic_add_notify_callback(
     homekit_characteristic_t *ch,
-    void (*function)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn function,
     void *context
 ) {
     homekit_characteristic_change_callback_t *new_callback = malloc(sizeof(homekit_characteristic_change_callback_t));
@@ -104,10 +176,10 @@ void homekit_characteristic_add_notify_callback(
     new_callback->context = context;
     new_callback->next = NULL;
 
-    if (!ch->callbacks) {
-        ch->callbacks = new_callback;
+    if (!ch->callback) {
+        ch->callback = new_callback;
     } else {
-        homekit_characteristic_change_callback_t *callback = ch->callbacks;
+        homekit_characteristic_change_callback_t *callback = ch->callback;
         if (callback->function == function && callback->context == context) {
             free(new_callback);
             return;
@@ -128,7 +200,7 @@ void homekit_characteristic_add_notify_callback(
 
 void homekit_characteristic_remove_notify_callback(
     homekit_characteristic_t *ch,
-    void (*function)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn function,
     void *context
 ) {
     while (ch->callbacks) {
@@ -159,7 +231,7 @@ void homekit_characteristic_remove_notify_callback(
 
 void homekit_accessories_clear_notify_callbacks(
     homekit_accessory_t **accessories,
-    void (*function)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn function,
     void *context
 ) {
     for (homekit_accessory_t **accessory_it = accessories; *accessory_it; accessory_it++) {
@@ -179,8 +251,8 @@ void homekit_accessories_clear_notify_callbacks(
 
 
 bool homekit_characteristic_has_notify_callback(
-    homekit_characteristic_t *ch,
-    void (*function)(homekit_characteristic_t *, void *),
+    const homekit_characteristic_t *ch,
+    homekit_characteristic_change_callback_fn function,
     void *context
 ) {
     homekit_characteristic_change_callback_t *callback = ch->callbacks;

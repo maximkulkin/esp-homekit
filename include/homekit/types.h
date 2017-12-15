@@ -63,18 +63,11 @@ typedef struct _homekit_accessory homekit_accessory_t;
 typedef struct _homekit_service homekit_service_t;
 typedef struct _homekit_characteristic homekit_characteristic_t;
 
-typedef struct _homekit_characteristic_change_callback {
-    void (*function)(homekit_characteristic_t *characteristic, void *context);
-    void *context;
-    struct _homekit_characteristic_change_callback *next;
-} homekit_characteristic_change_callback_t;
 
-struct _homekit_characteristic {
-    homekit_service_t *service;
-
-    unsigned int id;
-    const char *type;
-    const char *description;
+typedef struct {
+    bool is_null : 1;
+    bool is_static : 1;
+    homekit_format_t format : 6;
     union {
         bool bool_value;
         int int_value;
@@ -83,9 +76,60 @@ struct _homekit_characteristic {
         // tlv
         // data
     };
+} homekit_value_t;
+
+void homekit_value_copy(homekit_value_t *dst, homekit_value_t *src);
+homekit_value_t *homekit_value_clone(homekit_value_t *value);
+void homekit_value_destruct(homekit_value_t *value);
+void homekit_value_free(homekit_value_t *value);
+
+
+#define HOMEKIT_NULL(...) \
+    (homekit_value_t) {.format=homekit_format_bool, .is_null=true, ##__VA_ARGS__}
+#define HOMEKIT_BOOL(value, ...) \
+    (homekit_value_t) {.format=homekit_format_bool, .bool_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_INT(value, ...) \
+    (homekit_value_t) {.format=homekit_format_int, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT8(value, ...) \
+    (homekit_value_t) {.format=homekit_format_uint8, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT16(value, ...) \
+    (homekit_value_t) {.format=homekit_format_uint16, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT32(value, ...) \
+    (homekit_value_t) {.format=homekit_format_uint32, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT64(value, ...) \
+    (homekit_value_t) {.format=homekit_format_uint64, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_FLOAT(value, ...) \
+    (homekit_value_t) {.format=homekit_format_float, .float_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_STRING(value, ...) \
+    (homekit_value_t) {.format=homekit_format_string, .string_value=(value), ##__VA_ARGS__}
+/*
+#define HOMEKIT_TLV(value, ...) \
+    (homekit_value_t) {.format=homekit_format_tlv, .tlv_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_DATA(value, ...) \
+    (homekit_value_t) {.format=homekit_format_data, .data_value=(value), ##__VA_ARGS__}
+*/
+
+
+typedef void (*homekit_characteristic_change_callback_fn)(const homekit_characteristic_t *ch, void *context);
+
+typedef struct _homekit_characteristic_change_callback {
+    homekit_characteristic_change_callback_fn function;
+    void *context;
+    struct _homekit_characteristic_change_callback *next;
+} homekit_characteristic_change_callback_t;
+
+
+struct _homekit_characteristic {
+    homekit_service_t *service;
+
+    unsigned int id;
+    const char *type;
+    const char *description;
     homekit_format_t format;
     homekit_unit_t unit;
     homekit_permissions_t permissions;
+    homekit_value_t value;
+
     float *min_value;
     float *max_value;
     float *min_step;
@@ -94,8 +138,9 @@ struct _homekit_characteristic {
     // valid-values
     // valid-values-range
 
-    void *getter;
-    void *setter;
+    homekit_value_t (*getter)();
+    void (*setter)(const homekit_value_t);
+
     homekit_characteristic_change_callback_t *callbacks;
 };
 
@@ -144,25 +189,25 @@ homekit_characteristic_t *homekit_characteristic_find_by_id(homekit_accessory_t 
 
 homekit_characteristic_t *homekit_characteristic_find_by_type(homekit_accessory_t **accessories, int aid, const char *type);
 
-void homekit_characteristic_notify(homekit_characteristic_t *ch);
+void homekit_characteristic_notify(const homekit_characteristic_t *ch, const homekit_value_t value);
 void homekit_characteristic_add_notify_callback(
     homekit_characteristic_t *ch,
-    void (*callback)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn callback,
     void *context
 );
 void homekit_characteristic_remove_notify_callback(
     homekit_characteristic_t *ch,
-    void (*callback)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn callback,
     void *context
 );
 void homekit_accessories_clear_notify_callbacks(
     homekit_accessory_t **accessories,
-    void (*function)(homekit_characteristic_t *, void *),
+    homekit_characteristic_change_callback_fn callback,
     void *context
 );
 bool homekit_characteristic_has_notify_callback(
-    homekit_characteristic_t *ch,
-    void (*function)(homekit_characteristic_t *, void *),
+    const homekit_characteristic_t *ch,
+    homekit_characteristic_change_callback_fn callback,
     void *context
 );
 

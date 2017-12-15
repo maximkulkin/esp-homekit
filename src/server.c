@@ -358,18 +358,7 @@ typedef enum {
 } characteristic_format_t;
 
 
-typedef bool (*bool_getter)();
-typedef int (*int_getter)();
-typedef float (*float_getter)();
-typedef const char *(*string_getter)();
-
-typedef void (*bool_setter)(bool);
-typedef void (*int_setter)(int);
-typedef void (*float_setter)(float);
-typedef void (*string_setter)(const char *);
-
-
-cJSON *characteristic_to_json(client_context_t *client, homekit_characteristic_t *ch, characteristic_format_t format) {
+cJSON *characteristic_to_json(client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format) {
     cJSON *j_ch = cJSON_CreateObject();
     cJSON_AddNumberToObject(j_ch, "aid", ch->service->accessory->id);
     cJSON_AddNumberToObject(j_ch, "iid", ch->id);
@@ -450,43 +439,44 @@ cJSON *characteristic_to_json(client_context_t *client, homekit_characteristic_t
 
     cJSON *j_value = NULL;
     if (ch->permissions & homekit_permissions_paired_read) {
-        switch(ch->format) {
-            case homekit_format_bool: {
-                // DEBUG("Getting value for bool \"%s\", getter = %p", ch->type, ch->getter);
-                j_value = cJSON_CreateBool(
-                    (ch->getter) ? ((bool_getter)ch->getter)() : ch->bool_value
-                );
-                break;
+        homekit_value_t v = ch->getter ? ch->getter() : ch->value;
+
+        if (v.is_null) {
+            // j_value = cJSON_CreateNull();
+        } else if (v.format != ch->format) {
+            ERROR("Characteristic value format is different from characteristic format");
+        } else {
+            switch(v.format) {
+                case homekit_format_bool: {
+                    j_value = cJSON_CreateBool(v.bool_value);
+                    break;
+                }
+                case homekit_format_uint8:
+                case homekit_format_uint16:
+                case homekit_format_uint32:
+                case homekit_format_uint64:
+                case homekit_format_int: {
+                    j_value = cJSON_CreateNumber(v.int_value);
+                    break;
+                }
+                case homekit_format_float: {
+                    j_value = cJSON_CreateNumber(v.float_value);
+                    break;
+                }
+                case homekit_format_string: {
+                    j_value = cJSON_CreateString(v.string_value);
+                    break;
+                }
+                case homekit_format_tlv:
+                case homekit_format_data:
+                    // TODO:
+                    break;
             }
-            case homekit_format_uint8:
-            case homekit_format_uint16:
-            case homekit_format_uint32:
-            case homekit_format_uint64:
-            case homekit_format_int: {
-                // DEBUG("Getting value for int \"%s\", getter = %p", ch->type, ch->getter);
-                j_value = cJSON_CreateNumber(
-                    (ch->getter) ? ((int_getter)ch->getter)() : ch->int_value
-                );
-                break;
-            }
-            case homekit_format_float: {
-                // DEBUG("Getting value for float \"%s\", getter = %p", ch->type, ch->getter);
-                j_value = cJSON_CreateNumber(
-                    (ch->getter) ? ((float_getter)ch->getter)() : ch->float_value
-                );
-                break;
-            }
-            case homekit_format_string: {
-                // DEBUG("Getting value for string \"%s\", getter = %p", ch->type, ch->getter);
-                j_value = cJSON_CreateString(
-                    (ch->getter) ? ((string_getter)ch->getter)() : ch->string_value
-                );
-                break;
-            }
-            case homekit_format_tlv:
-            case homekit_format_data:
-                // TODO:
-                break;
+        }
+
+        if (!value && ch->getter) {
+            // called getter to get value, need to free it
+            homekit_value_destruct(&v);
         }
     }
     if (j_value)
@@ -1995,6 +1985,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
         cJSON *j_value = cJSON_GetObjectItem(j_ch, "value");
         if (j_value) {
+            homekit_value_t h_value = HOMEKIT_NULL();
+
             if (!(ch->permissions & homekit_permissions_paired_write)) {
                 CLIENT_ERROR(context, "Failed to update %d.%d: no write permission", aid, iid);
                 return HAPStatus_ReadOnly;
@@ -2015,10 +2007,11 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    h_value = HOMEKIT_BOOL(value);
                     if (ch->setter) {
-                        ((bool_setter)ch->setter)(value);
+                        ch->setter(h_value);
                     } else {
-                        ch->bool_value = value;
+                        ch->value = h_value;
                     }
                     break;
                 }
@@ -2078,10 +2071,11 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    h_value = HOMEKIT_INT(value, .format=ch->format);
                     if (ch->setter) {
-                        ((int_setter)ch->setter)(value);
+                        ch->setter(h_value);
                     } else {
-                        ch->int_value = value;
+                        ch->value = h_value;
                     }
                     break;
                 }
@@ -2098,10 +2092,11 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    h_value = HOMEKIT_FLOAT(value);
                     if (ch->setter) {
-                        ((float_setter)ch->setter)(value);
+                        ch->setter(h_value);
                     } else {
-                        ch->float_value = value;
+                        ch->value = h_value;
                     }
                     break;
                 }
@@ -2120,12 +2115,14 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     }
 
                     if (ch->setter) {
-                        ((string_setter)ch->setter)(value);
+                        h_value = HOMEKIT_STRING(value);
+                        ch->setter(h_value);
                     } else {
-                        if (ch->string_value) {
-                            free(ch->string_value);
+                        if (ch->value.string_value && !ch->value.is_static) {
+                            free(ch->value.string_value);
                         }
-                        ch->string_value = strdup(value);
+                        h_value = HOMEKIT_STRING(strdup(value));
+                        ch->value = h_value;
                     }
                     break;
                 }
@@ -2139,7 +2136,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                 }
             }
 
-            homekit_characteristic_notify(ch);
+            if (!h_value.is_null)
+                homekit_characteristic_notify(ch, h_value);
         }
 
         cJSON *j_events = cJSON_GetObjectItem(j_ch, "ev");
@@ -2856,7 +2854,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
 
     char buffer[32];
     // accessory model name (required)
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "md", name->string_value);
+    mdns_TXT_append(txt_rec, sizeof(txt_rec), "md", name->value.string_value);
     // protocol version (required)
     mdns_TXT_append(txt_rec, sizeof(txt_rec), "pv", "1.0");
     // device ID (required)
@@ -2882,7 +2880,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     mdns_TXT_append(txt_rec, sizeof(txt_rec), "ci", buffer);
 
     mdns_clear();
-    mdns_add_facility(name->string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
+    mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
 }
 
 char *homekit_accessory_id_generate() {

@@ -178,7 +178,7 @@
         .type = _type, \
         .format = homekit_format_string, \
         .permissions = homekit_permissions_paired_read, \
-        .string_value = (_value), \
+        .value.string_value = (_value), \
         ##__VA_ARGS__ \
     )
 
@@ -222,7 +222,7 @@
         .permissions = homekit_permissions_paired_read \
                      | homekit_permissions_paired_write \
                      | homekit_permissions_notify, \
-        .bool_value = (_value), \
+        .value.bool_value = (_value), \
         ##__VA_ARGS__ \
     )
 
@@ -238,7 +238,7 @@
         .min_value = (float[]){0}, \
         .max_value = (float[]){100}, \
         .min_step = (float[]){1}, \
-        .int_value = (_value) \
+        .value.int_value = (_value) \
     )
 
 #define HOMEKIT_DECLARE_CHARACTERISTIC_SATURATION(_value, ...) \
@@ -253,7 +253,7 @@
         .min_value = (float[]){0}, \
         .max_value = (float[]){100}, \
         .min_step = (float[]){1}, \
-        .float_value = (_value) \
+        .value.float_value = (_value) \
     )
 
 #define HOMEKIT_DECLARE_CHARACTERISTIC_HUE(_value, ...) \
@@ -268,7 +268,7 @@
         .min_value = (float[]){0}, \
         .max_value = (float[]){360}, \
         .min_step = (float[]){1}, \
-        .float_value = (_value) \
+        .value.float_value = (_value) \
     )
 
 
