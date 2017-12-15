@@ -868,7 +868,9 @@ void homekit_server_on_identify(client_context_t *context) {
         return;
     }
 
-    // TODO: execute identify attribute's callbacks
+    if (ch_identify->setter) {
+        ch_identify->setter(HOMEKIT_BOOL(true));
+    }
 
     send_204_response(context);
 }
