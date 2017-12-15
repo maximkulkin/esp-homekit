@@ -630,7 +630,7 @@ int client_decrypt(
         }
 
         decrypted_offset += decrypted_len;
-        payload_offset += chunk_size + 0x12; // TODO: 0x10 is for some auth bytes
+        payload_offset += chunk_size + 0x12; // 0x10 is for some auth bytes
     }
 
     return payload_offset;
@@ -1739,7 +1739,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             const byte salt[] = "Control-Salt";
-            // TODO: generate read & write keys
+
             size_t read_key_size = 32;
             context->read_key = malloc(read_key_size);
             const byte read_info[] = "Control-Read-Encryption-Key";
@@ -1883,7 +1883,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     query_param_t *id_param = query_params_find(context->endpoint_params, "id");
     if (!id_param) {
         CLIENT_ERROR(context, "Invalid get characteristics request: missing ID parameter");
-        // TODO: respond with a Bad Request
+        send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
     char *id = strdup(id_param->value);
@@ -1924,7 +1924,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     while ((ch_id = strsep(&id, ","))) {
         char *dot = strstr(ch_id, ".");
         if (!dot) {
-            // TODO: respond with Bad Request
+            send_json_error_response(context, 400, HAPStatus_InvalidValue);
             return;
         }
 
