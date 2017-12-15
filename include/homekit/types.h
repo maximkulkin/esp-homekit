@@ -172,7 +172,7 @@ struct _homekit_service {
     bool hidden;
     bool primary;
     // linked
-    homekit_characteristic_t *characteristics[8];
+    homekit_characteristic_t **characteristics;
 };
 
 struct _homekit_accessory {
@@ -181,7 +181,7 @@ struct _homekit_accessory {
     homekit_accessory_category_t category;
     int config_number;
 
-    homekit_service_t *services[8];
+    homekit_service_t **services;
 };
 
 #define HOMEKIT_ACCESSORY(...) \
