@@ -441,6 +441,37 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
 
         if (ch->max_data_len)
             cJSON_AddNumberToObject(j_ch, "maxDataLen", *ch->max_data_len);
+
+        if (ch->valid_values.count) {
+            cJSON *j_valid_values = cJSON_CreateArray();
+            cJSON_AddItemToObject(j_ch, "valid-values", j_valid_values);
+
+            for (int i=0; i<ch->valid_values.count; i++) {
+                cJSON_AddItemToArray(
+                    j_valid_values,
+                    cJSON_CreateNumber(ch->valid_values.values[i])
+                );
+            }
+        }
+
+        if (ch->valid_values_ranges.count) {
+            cJSON *j_valid_values_ranges = cJSON_CreateArray();
+            cJSON_AddItemToObject(j_ch, "valid-values-range", j_valid_values_ranges);
+
+            for (int i=0; i<ch->valid_values_ranges.count; i++) {
+                cJSON *j_range = cJSON_CreateArray();
+                cJSON_AddItemToArray(j_valid_values_ranges, j_range);
+
+                cJSON_AddItemToArray(
+                    j_range,
+                    cJSON_CreateNumber(ch->valid_values_ranges.ranges[i].start)
+                );
+                cJSON_AddItemToArray(
+                    j_range,
+                    cJSON_CreateNumber(ch->valid_values_ranges.ranges[i].end)
+                );
+            }
+        }
     }
 
     cJSON *j_value = NULL;
@@ -2084,6 +2115,37 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     if (value < min_value || value > max_value) {
                         CLIENT_ERROR(context, "Failed to update %d.%d: value is not in range", aid, iid);
                         return HAPStatus_InvalidValue;
+                    }
+
+                    if (ch->valid_values.count) {
+                        bool matches = false;
+                        for (int i=0; i<ch->valid_values.count; i++) {
+                            if (value == ch->valid_values.values[i]) {
+                                matches = true;
+                                break;
+                            }
+                        }
+
+                        if (!matches) {
+                            CLIENT_ERROR(context, "Failed to update %d.%d: value is not one of valid values", aid, iid);
+                            return HAPStatus_InvalidValue;
+                        }
+                    }
+
+                    if (ch->valid_values_ranges.count) {
+                        bool matches = false;
+                        for (int i=0; i<ch->valid_values_ranges.count; i++) {
+                            if (value >= ch->valid_values_ranges.ranges[i].start &&
+                                    value <= ch->valid_values_ranges.ranges[i].end) {
+                                matches = true;
+                                break;
+                            }
+                        }
+
+                        if (!matches) {
+                            CLIENT_ERROR(context, "Failed to update %d.%d: value is not in valid values range", aid, iid);
+                            return HAPStatus_InvalidValue;
+                        }
                     }
 
                     h_value = HOMEKIT_INT(value, .format=ch->format);

@@ -2,6 +2,7 @@
 #define __HOMEKIT_TYPES_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum {
     homekit_format_bool,
@@ -110,6 +111,24 @@ void homekit_value_free(homekit_value_t *value);
 */
 
 
+typedef struct {
+    int count;
+    uint8_t *values;
+} homekit_valid_values_t;
+
+
+typedef struct {
+    uint8_t start;
+    uint8_t end;
+} homekit_valid_values_range_t;
+
+
+typedef struct {
+    int count;
+    homekit_valid_values_range_t *ranges;
+} homekit_valid_values_ranges_t;
+
+
 typedef void (*homekit_characteristic_change_callback_fn)(const homekit_characteristic_t *ch, const homekit_value_t value, void *context);
 
 typedef struct _homekit_characteristic_change_callback {
@@ -135,8 +154,9 @@ struct _homekit_characteristic {
     float *min_step;
     int *max_len;
     int *max_data_len;
-    // valid-values
-    // valid-values-range
+
+    homekit_valid_values_t valid_values;
+    homekit_valid_values_ranges_t valid_values_ranges;
 
     homekit_value_t (*getter)();
     void (*setter)(const homekit_value_t);
