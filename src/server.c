@@ -5,7 +5,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <esp/hwrand.h>
-#include <espressif/esp_system.h>
+#include <espressif/esp_common.h>
 
 #include <lwip/sockets.h>
 
@@ -3062,10 +3062,21 @@ void homekit_server_task(void *args) {
         server->paired = true;
     }
 
+    if (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
+        INFO("Waiting for IP");
+        while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+
+        INFO("Got IP, starting");
+    }
+
     mdns_init();
     homekit_setup_mdns(server);
 
     run_server(server);
+
+    vTaskDelete(NULL);
 }
 
 #define ISDIGIT(x) isdigit((unsigned char)(x))
