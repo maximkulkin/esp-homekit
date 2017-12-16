@@ -435,26 +435,27 @@ void mdns_clear() {
 }
 
 
-void mdns_TXT_append(char* txt, size_t txt_size, const char* key, const char* value)
+void mdns_TXT_append(char* txt, size_t txt_size, const char* record, size_t record_size)
 {
-    size_t txt_len = strlen(txt),
-           key_len = strlen(key),
-           value_len = strlen(value);
+    size_t txt_len = strlen(txt);
 
-    size_t extra_len = key_len + value_len + 1;  // extra 1 is for equals sign
-
-    if (extra_len > 255) {
-        printf(">>> mdns_txt_add: key %s section is longer than 255\n", key);
+    if (record_size > 255) {
+        char *s = strndup(record, record_size);
+        printf(">>> mdns_txt_add: record %s section is longer than 255\n", s);
+        free(s);
         return;
     }
 
-    if (txt_len + extra_len + 2 > txt_size) {  // extra 2 is for length and terminator
-        printf(">>> mdns_txt_add: not enough space to add TXT key %s\n", key);
+    if (txt_len + record_size + 2 > txt_size) {  // extra 2 is for length and terminator
+        char *s = strndup(record, record_size);
+        printf(">>> mdns_txt_add: not enough space to add TXT record %s\n", s);
+        free(s);
         return;
     }
 
-    txt[txt_len] = extra_len;
-    snprintf(txt + txt_len + 1, txt_size - txt_len, "%s=%s", key, value);
+    txt[txt_len] = record_size;
+    memcpy(txt + txt_len + 1, record, record_size);
+    txt[txt_len + record_size + 1] = 0;
 }
 
 

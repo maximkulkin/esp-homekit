@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <esp/hwrand.h>
 #include <espressif/esp_system.h>
@@ -2960,32 +2961,42 @@ void homekit_setup_mdns(homekit_server_t *server) {
     char txt_rec[128];
     txt_rec[0] = 0;
 
-    char buffer[32];
+    void add_txt(const char *format, ...) {
+        va_list arg_ptr;
+        va_start(arg_ptr, format);
+
+        char buffer[128];
+        int buffer_len = vsnprintf(buffer, sizeof(buffer), format, arg_ptr);
+
+        va_end(arg_ptr);
+
+        if (buffer_len && buffer_len < sizeof(buffer)-1)
+            mdns_TXT_append(txt_rec, sizeof(txt_rec), buffer, buffer_len);
+    }
+
     // accessory model name (required)
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "md", name->value.string_value);
+    add_txt("md=%s", name->value.string_value);
     // protocol version (required)
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "pv", "1.0");
+    add_txt("pv=1.0");
     // device ID (required)
     // should be in format XX:XX:XX:XX:XX:XX, otherwise devices will ignore it
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "id", server->accessory_id);
+    add_txt("id=%s", server->accessory_id);
     // current configuration number (required)
-    snprintf(buffer, sizeof(buffer), "%d", accessory->config_number);
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "c#", buffer);
+    add_txt("c#=%d", accessory->config_number);
     // current state number (required)
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "s#", "1");
+    add_txt("s#=1");
     // feature flags (required if non-zero)
     //   bit 0 - supports HAP pairing. required for all HomeKit accessories
     //   bits 1-7 - reserved
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "ff", "0");
+    add_txt("ff=0");
     // status flags
     //   bit 0 - not paired
     //   bit 1 - not configured to join WiFi
     //   bit 2 - problem detected on accessory
     //   bits 3-7 - reserved
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "sf", (server->paired) ? "0" : "1");
+    add_txt("sf=%d", (server->paired) ? 0 : 1);
     // accessory category identifier
-    snprintf(buffer, sizeof(buffer), "%d", accessory->category);
-    mdns_TXT_append(txt_rec, sizeof(txt_rec), "ci", buffer);
+    add_txt("ci=%d", accessory->category);
 
     mdns_clear();
     mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);

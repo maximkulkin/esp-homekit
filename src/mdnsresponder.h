@@ -55,7 +55,7 @@ void mdns_add_A  (const char* rKey, u32_t ttl, const ip4_addr_t *addr);
 void mdns_add_AAAA(const char* rKey, u32_t ttl, const ip6_addr_t *addr);
 #endif
 
-void mdns_TXT_append(char* txt, size_t txt_size, const char* key, const char* value);
+void mdns_TXT_append(char* txt, size_t txt_size, const char* record, size_t record_size);
 /* Sample usage, advertising a secure web service
 
     mdns_init();
