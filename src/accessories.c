@@ -111,7 +111,40 @@ void homekit_accessories_init(homekit_accessory_t **accessories) {
     }
 }
 
-homekit_characteristic_t *homekit_characteristic_find_by_id(homekit_accessory_t **accessories, int aid, int iid) {
+homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid) {
+    for (homekit_accessory_t **accessory_it = accessories; *accessory_it; accessory_it++) {
+        homekit_accessory_t *accessory = *accessory_it;
+
+        if (accessory->id == aid)
+            return accessory;
+    }
+
+    return NULL;
+}
+
+homekit_service_t *homekit_service_by_type(homekit_accessory_t *accessory, const char *type) {
+    for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
+        homekit_service_t *service = *service_it;
+
+        if (!strcmp(service->type, type))
+            return service;
+    }
+
+    return NULL;
+}
+
+homekit_characteristic_t *homekit_service_characteristic_by_type(homekit_service_t *service, const char *type) {
+    for (homekit_characteristic_t **ch_it = service->characteristics; *ch_it; ch_it++) {
+        homekit_characteristic_t *ch = *ch_it;
+
+        if (!strcmp(ch->type, type))
+            return ch;
+    }
+
+    return NULL;
+}
+
+homekit_characteristic_t *homekit_characteristic_by_aid_and_iid(homekit_accessory_t **accessories, int aid, int iid) {
     for (homekit_accessory_t **accessory_it = accessories; *accessory_it; accessory_it++) {
         homekit_accessory_t *accessory = *accessory_it;
 

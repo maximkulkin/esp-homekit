@@ -205,9 +205,10 @@ struct _homekit_accessory {
 
 
 void homekit_accessories_init(homekit_accessory_t **accessories);
-homekit_characteristic_t *homekit_characteristic_find_by_id(homekit_accessory_t **accessories, int aid, int iid);
-
-homekit_characteristic_t *homekit_characteristic_find_by_type(homekit_accessory_t **accessories, int aid, const char *type);
+homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid);
+homekit_service_t *homekit_service_by_type(homekit_accessory_t *accessory, const char *type);
+homekit_characteristic_t *homekit_service_characteristic_by_type(homekit_service_t *service, const char *type);
+homekit_characteristic_t *homekit_characteristic_by_aid_and_iid(homekit_accessory_t **accessories, int aid, int iid);
 
 void homekit_characteristic_notify(const homekit_characteristic_t *ch, const homekit_value_t value);
 void homekit_characteristic_add_notify_callback(

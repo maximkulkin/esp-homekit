@@ -861,18 +861,29 @@ void homekit_server_on_identify(client_context_t *context) {
         return;
     }
 
+    send_204_response(context);
+
+    homekit_accessory_t *accessory =
+        homekit_accessory_by_id(context->server->config->accessories, 1);
+    if (!accessory) {
+        return;
+    }
+
+    homekit_service_t *accessory_info =
+        homekit_service_by_type(accessory, HOMEKIT_SERVICE_ACCESSORY_INFORMATION);
+    if (!accessory_info) {
+        return;
+    }
+
     homekit_characteristic_t *ch_identify =
-        homekit_characteristic_find_by_type(context->server->config->accessories, 1, HOMEKIT_CHARACTERISTIC_IDENTIFY);
+        homekit_service_characteristic_by_type(accessory_info, HOMEKIT_CHARACTERISTIC_IDENTIFY);
     if (!ch_identify) {
-        send_json_error_response(context, 400, HAPStatus_InsufficientPrivileges);
         return;
     }
 
     if (ch_identify->setter) {
         ch_identify->setter(HOMEKIT_BOOL(true));
     }
-
-    send_204_response(context);
 }
 
 void homekit_server_on_pair_setup(client_context_t *context, const byte *data, size_t size) {
@@ -1935,7 +1946,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         int iid = atoi(dot+1);
 
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
-        homekit_characteristic_t *ch = homekit_characteristic_find_by_id(context->server->config->accessories, aid, iid);
+        homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
         if (!ch) {
             cJSON_AddItemToArray(
                 characteristics,
@@ -2022,7 +2033,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         int aid = j_aid->valueint;
         int iid = j_iid->valueint;
 
-        homekit_characteristic_t *ch = homekit_characteristic_find_by_id(
+        homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(
             context->server->config->accessories, aid, iid
         );
         if (!ch) {
@@ -2931,7 +2942,15 @@ void homekit_setup_mdns(homekit_server_t *server) {
     INFO("Configuring mDNS");
 
     homekit_accessory_t *accessory = server->config->accessories[0];
-    homekit_characteristic_t *name = homekit_characteristic_find_by_type(server->config->accessories, 1, HOMEKIT_CHARACTERISTIC_NAME);
+    homekit_service_t *accessory_info =
+        homekit_service_by_type(accessory, HOMEKIT_SERVICE_ACCESSORY_INFORMATION);
+    if (!accessory_info) {
+        ERROR("Invalid accessory declaration: no Accessory Information service");
+        return;
+    }
+
+    homekit_characteristic_t *name =
+        homekit_service_characteristic_by_type(accessory_info, HOMEKIT_CHARACTERISTIC_NAME);
     if (!name) {
         ERROR("Invalid accessory declaration: "
               "no Name characteristic in AccessoryInfo service");
