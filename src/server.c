@@ -2724,13 +2724,13 @@ static void homekit_pairing_task(void *_context) {
 
         int data_len = lwip_read(context->socket, data, data_size);
         if (data_len == 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+            CLIENT_DEBUG(context, "Got %d incoming data", data_len);
             // connection closed
             break;
         }
 
         if (data_len > 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+            CLIENT_DEBUG(context, "Got %d incoming data", data_len);
             byte *payload = (byte *)data;
             size_t payload_size = (size_t)data_len;
 
@@ -2812,13 +2812,13 @@ static void homekit_client_task(void *_context) {
 
         int data_len = lwip_read(context->socket, data+available, data_size-available);
         if (data_len == 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+            CLIENT_DEBUG(context, "Got %d incoming data", data_len);
             // connection closed
             break;
         }
 
         if (data_len > 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+            CLIENT_DEBUG(context, "Got %d incoming data", data_len);
             byte *payload = (byte *)data;
             size_t payload_size = (size_t)data_len;
 
