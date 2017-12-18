@@ -85,29 +85,49 @@ void homekit_value_destruct(homekit_value_t *value);
 void homekit_value_free(homekit_value_t *value);
 
 
-#define HOMEKIT_NULL(...) \
-    (homekit_value_t) {.format=homekit_format_bool, .is_null=true, ##__VA_ARGS__}
-#define HOMEKIT_BOOL(value, ...) \
-    (homekit_value_t) {.format=homekit_format_bool, .bool_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_INT(value, ...) \
-    (homekit_value_t) {.format=homekit_format_int, .int_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_UINT8(value, ...) \
-    (homekit_value_t) {.format=homekit_format_uint8, .int_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_UINT16(value, ...) \
-    (homekit_value_t) {.format=homekit_format_uint16, .int_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_UINT32(value, ...) \
-    (homekit_value_t) {.format=homekit_format_uint32, .int_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_UINT64(value, ...) \
-    (homekit_value_t) {.format=homekit_format_uint64, .int_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_FLOAT(value, ...) \
-    (homekit_value_t) {.format=homekit_format_float, .float_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_STRING(value, ...) \
-    (homekit_value_t) {.format=homekit_format_string, .string_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_NULL_(...) \
+    {.format=homekit_format_bool, .is_null=true, ##__VA_ARGS__}
+#define HOMEKIT_NULL(...) (homekit_value_t) HOMEKIT_NULL_( __VA_ARGS__ )
+
+#define HOMEKIT_BOOL_(value, ...) \
+    {.format=homekit_format_bool, .bool_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_BOOL(value, ...) (homekit_value_t) HOMEKIT_BOOL_(value, __VA_ARGS__)
+
+#define HOMEKIT_INT_(value, ...) \
+    {.format=homekit_format_int, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_INT(value, ...) (homekit_value_t) HOMEKIT_INT_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_UINT8_(value, ...) \
+    {.format=homekit_format_uint8, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT8(value, ...) (homekit_value_t) HOMEKIT_UINT8_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_UINT16_(value, ...) \
+    {.format=homekit_format_uint16, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT16(value, ...) (homekit_value_t) HOMEKIT_UINT16_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_UINT32_(value, ...) \
+    {.format=homekit_format_uint32, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT32(value, ...) (homekit_value_t) HOMEKIT_UINT32_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_UINT64_(value, ...) \
+    {.format=homekit_format_uint64, .int_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_UINT64(value, ...) (homekit_value_t) HOMEKIT_UINT64_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_FLOAT_(value, ...) \
+    {.format=homekit_format_float, .float_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_FLOAT(value, ...) (homekit_value_t) HOMEKIT_FLOAT_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_STRING_(value, ...) \
+    {.format=homekit_format_string, .string_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_STRING(value, ...) (homekit_value_t) HOMEKIT_STRING_(value, ##__VA_ARGS__)
 /*
-#define HOMEKIT_TLV(value, ...) \
-    (homekit_value_t) {.format=homekit_format_tlv, .tlv_value=(value), ##__VA_ARGS__}
-#define HOMEKIT_DATA(value, ...) \
-    (homekit_value_t) {.format=homekit_format_data, .data_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_TLV_(value, ...) \
+    {.format=homekit_format_tlv, .tlv_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_TLV(value, ...) (homekit_value_t) HOMEKIT_TLV_(value, ##__VA_ARGS__)
+
+#define HOMEKIT_DATA_(value, ...) \
+    {.format=homekit_format_data, .data_value=(value), ##__VA_ARGS__}
+#define HOMEKIT_DATA(value, ...) (homekit_value_t) HOMEKIT_DATA_(value, ##__VA_ARGS__)
 */
 
 
@@ -192,16 +212,25 @@ struct _homekit_accessory {
     }
 
 #define HOMEKIT_SERVICE(_type, ...) \
-    &(homekit_service_t) { .type=_type, ##__VA_ARGS__ }
+    &(homekit_service_t) { .type=HOMEKIT_SERVICE_ ## _type, ##__VA_ARGS__ }
 
-#define HOMEKIT_CHARACTERISTIC(...) \
+#define HOMEKIT_CHARACTERISTIC(name, ...) \
     &(homekit_characteristic_t) { \
-        .type = 0, \
-        .format = homekit_format_uint8, \
-        .unit = homekit_unit_none, \
-        .permissions = homekit_permissions_paired_read, \
-        ##__VA_ARGS__ \
+        HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
     }
+
+#define HOMEKIT_CHARACTERISTIC_(name, ...) \
+    { \
+        HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
+    }
+
+
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CUSTOM(...) \
+    .format = homekit_format_uint8, \
+    .unit = homekit_unit_none, \
+    .permissions = homekit_permissions_paired_read, \
+    ##__VA_ARGS__
+
 
 
 void homekit_accessories_init(homekit_accessory_t **accessories);
