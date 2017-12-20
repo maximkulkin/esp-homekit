@@ -418,6 +418,8 @@ static u8_t* mdns_get_question(u8_t* hdrP, u8_t* qp, char* qStr, uint16_t* qClas
 }
 
 //---------------------------------------------------------------------------
+static void mdns_announce(struct netif *netif, const ip_addr_t *addr);
+
 
 void mdns_clear() {
     xSemaphoreTake(gDictMutex, portMAX_DELAY);
@@ -539,7 +541,7 @@ void mdns_add_AAAA(const char* rKey, u32_t ttl, const ip6_addr_t *addr)
 void mdns_add_facility( const char* instanceName,   // Friendly name, need not be unique
                         const char* serviceName,    // Must be "_name", e.g. "_hap" or "_http"
                         const char* addText,        // Must be <key>=<value>
-                        mdns_flags  flags,          // TCP or UDP
+                        mdns_flags flags,           // TCP or UDP
                         u16_t onPort,               // port number
                         u32_t ttl                   // seconds
                       )
@@ -587,6 +589,14 @@ void mdns_add_facility( const char* instanceName,   // Friendly name, need not b
     free(key);
     free(fullName);
     free(devName);
+
+    struct netif *netif = sdk_system_get_netif(STATION_IF);
+#if LWIP_IPV4
+    mdns_announce(netif, &gMulticastV4Addr);
+#endif
+#if LWIP_IPV6
+    mdns_announce(netif, &gMulticastV6Addr);
+#endif
 }
 
 static mdns_rsrc* mdns_match(const char* qstr, u16_t qType)
@@ -791,6 +801,76 @@ static void mdns_reply(const ip_addr_t *addr, struct mdns_hdr* hdrP)
                 respLen = new_len;
             }
         }
+        mdns_send_mcast(addr, mdns_response, respLen);
+    }
+
+    free(mdns_response);
+}
+
+// Announce all configured services
+static void mdns_announce(struct netif *netif, const ip_addr_t *addr)
+{
+    u8_t *mdns_response = malloc(MDNS_RESPONDER_REPLY_SIZE);
+    if (mdns_response == NULL) {
+        printf(">>> mdns_reply could not alloc %d\n", MDNS_RESPONDER_REPLY_SIZE);
+        return;
+    }
+
+    // Build response header
+    struct mdns_hdr *rHdr = (struct mdns_hdr*) mdns_response;
+    memset(rHdr, 0, sizeof(*rHdr));
+    rHdr->flags1 = DNS_FLAG1_RESP + DNS_FLAG1_AUTH;
+
+    int respLen = SIZEOF_DNS_HDR;
+
+    if (xSemaphoreTake(gDictMutex, portMAX_DELAY)) {
+        mdns_rsrc *rsrcP = gDictP;
+        while (rsrcP) {
+#if LWIP_IPV6
+            if (rsrcP->rType == DNS_RRTYPE_AAAA) {
+                // Emit an answer for each ipv6 address.
+                for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++) {
+                    if (ip6_addr_isvalid(netif_ip6_addr_state(netif, i))) {
+                        const ip6_addr_t *addr6 = netif_ip6_addr(netif, i);
+#ifdef qDebugLog
+                        char addr6_str[IP6ADDR_STRLEN_MAX];
+                        ip6addr_ntoa_r(addr6, addr6_str, IP6ADDR_STRLEN_MAX);
+                        printf("Updating AAAA record for '%s' to %s\n", rsrcP->rData, addr6_str);
+#endif
+                        memcpy(&rsrcP->rData[rsrcP->rKeySize], addr6, sizeof(addr6->addr));
+                        size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
+                        if (new_len > respLen) {
+                            rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
+                            respLen = new_len;
+                        }
+                    }
+                }
+                continue;
+            }
+#endif
+
+            if (rsrcP->rType == DNS_RRTYPE_A) {
+#ifdef qDebugLog
+                char addr4_str[IP4ADDR_STRLEN_MAX];
+                ip4addr_ntoa_r(netif_ip4_addr(netif), addr4_str, IP4ADDR_STRLEN_MAX);
+                printf("Updating A record for '%s' to %s\n", rsrcP->rData, addr4_str);
+#endif
+                memcpy(&rsrcP->rData[rsrcP->rKeySize], netif_ip4_addr(netif), sizeof(ip4_addr_t));
+            }
+
+            size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
+            if (new_len > respLen) {
+                rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
+                respLen = new_len;
+            }
+
+            rsrcP = rsrcP->rNext;
+        }
+
+        xSemaphoreGive(gDictMutex);
+    }
+
+    if (respLen > SIZEOF_DNS_HDR) {
         mdns_send_mcast(addr, mdns_response, respLen);
     }
 
