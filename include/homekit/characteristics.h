@@ -96,7 +96,7 @@
                  | homekit_permissions_notify, \
     .unit = homekit_unit_percentage, \
     .min_value = (float[]) {0}, \
-    .max_value = (float[]) {100), \
+    .max_value = (float[]) {100}, \
     .min_step = (float[]) {1}, \
     .value = HOMEKIT_INT_(_value), \
     ##__VA_ARGS__
@@ -124,7 +124,7 @@
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
     .min_value = (float[]) {0}, \
-    .max_value = (float[]) {4), \
+    .max_value = (float[]) {4}, \
     .min_step = (float[]) {1}, \
     .valid_values = { \
         .count = 5, \
@@ -216,11 +216,13 @@
     .type = HOMEKIT_CHARACTERISTIC_HUE, \
     .description = "Hue", \
     .format = homekit_format_float, \
+    .unit = homekit_unit_arcdegrees, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_paired_write \
                  | homekit_permissions_notify, \
     .min_value = (float[]) {0}, \
     .max_value = (float[]) {360}, \
+    .min_step = (float[]) {1}, \
     .value = HOMEKIT_FLOAT_(_value), \
     ##__VA_ARGS__
 
@@ -422,9 +424,9 @@
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_paired_write \
                  | homekit_permissions_notify, \
-    .min_value = (float[]){0}, \
-    .max_value = (float[]){100}, \
-    .min_step = (float[]){1}, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {100}, \
+    .min_step = (float[]) {1}, \
     .value = HOMEKIT_FLOAT_(_value), \
     ##__VA_ARGS__
 
