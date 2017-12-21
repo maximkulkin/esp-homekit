@@ -354,7 +354,7 @@ void pairing_context_free(pairing_context_t *context) {
 }
 
 
-void client_notify_characteristic(const homekit_characteristic_t *ch, homekit_value_t value, void *client);
+void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *client);
 
 
 typedef enum {
@@ -641,7 +641,7 @@ int client_decrypt(
 void homekit_setup_mdns(homekit_server_t *server);
 
 
-void client_notify_characteristic(const homekit_characteristic_t *ch, homekit_value_t value, void *context) {
+void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *context) {
     DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
 
     client_context_t *client = context;

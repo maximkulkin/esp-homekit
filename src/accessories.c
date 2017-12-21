@@ -190,7 +190,7 @@ homekit_characteristic_t *homekit_characteristic_find_by_type(homekit_accessory_
 }
 
 
-void homekit_characteristic_notify(const homekit_characteristic_t *ch, homekit_value_t value) {
+void homekit_characteristic_notify(homekit_characteristic_t *ch, homekit_value_t value) {
     homekit_characteristic_change_callback_t *callback = ch->callback;
     while (callback) {
         callback->function(ch, value, callback->context);

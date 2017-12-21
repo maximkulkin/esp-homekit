@@ -149,13 +149,16 @@ typedef struct {
 } homekit_valid_values_ranges_t;
 
 
-typedef void (*homekit_characteristic_change_callback_fn)(const homekit_characteristic_t *ch, const homekit_value_t value, void *context);
+typedef void (*homekit_characteristic_change_callback_fn)(homekit_characteristic_t *ch, homekit_value_t value, void *context);
 
 typedef struct _homekit_characteristic_change_callback {
     homekit_characteristic_change_callback_fn function;
     void *context;
     struct _homekit_characteristic_change_callback *next;
 } homekit_characteristic_change_callback_t;
+
+
+#define HOMEKIT_CHARACTERISTIC_CALLBACK(f) &(homekit_characteristic_change_callback_t) { .function = f }
 
 
 struct _homekit_characteristic {
@@ -239,7 +242,7 @@ homekit_service_t *homekit_service_by_type(homekit_accessory_t *accessory, const
 homekit_characteristic_t *homekit_service_characteristic_by_type(homekit_service_t *service, const char *type);
 homekit_characteristic_t *homekit_characteristic_by_aid_and_iid(homekit_accessory_t **accessories, int aid, int iid);
 
-void homekit_characteristic_notify(const homekit_characteristic_t *ch, const homekit_value_t value);
+void homekit_characteristic_notify(homekit_characteristic_t *ch, const homekit_value_t value);
 void homekit_characteristic_add_notify_callback(
     homekit_characteristic_t *ch,
     homekit_characteristic_change_callback_fn callback,
