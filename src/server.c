@@ -739,7 +739,7 @@ void send_characteristic_event(client_context_t *context, const homekit_characte
 }
 
 
-void send_tlv_response(client_context_t *context, const tlv_values_t *values);
+void send_tlv_response(client_context_t *context, tlv_values_t *values);
 
 void send_tlv_error_response(client_context_t *context, int state, TLVError error) {
     tlv_values_t *response = tlv_new();
@@ -747,12 +747,10 @@ void send_tlv_error_response(client_context_t *context, int state, TLVError erro
     tlv_add_integer_value(response, TLVType_Error, error);
 
     send_tlv_response(context, response);
-
-    tlv_free(response);
 }
 
 
-void send_tlv_response(client_context_t *context, const tlv_values_t *values) {
+void send_tlv_response(client_context_t *context, tlv_values_t *values) {
     CLIENT_DEBUG(context, "Sending TLV response");
     TLV_DEBUG(values);
 
@@ -766,6 +764,8 @@ void send_tlv_response(client_context_t *context, const tlv_values_t *values) {
         free(payload);
         return;
     }
+
+    tlv_free(values);
 
     static char *http_headers =
         "HTTP/1.1 200 OK\r\n"
@@ -794,7 +794,7 @@ void send_tlv_response(client_context_t *context, const tlv_values_t *values) {
 }
 
 
-void send_json_response(client_context_t *context, int status_code, const cJSON *root) {
+void send_json_response(client_context_t *context, int status_code, cJSON *root) {
     CLIENT_DEBUG(context, "Sending JSON response");
 
     static char *http_headers =
@@ -804,6 +804,7 @@ void send_json_response(client_context_t *context, int status_code, const cJSON 
         "Connection: keep-alive\r\n\r\n";
 
     char *payload = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
     size_t payload_size = strlen(payload);
 
     CLIENT_DEBUG(context, "Payload: %s", payload);
@@ -821,6 +822,11 @@ void send_json_response(client_context_t *context, int status_code, const cJSON 
 
     int response_size = strlen(http_headers) + payload_size + strlen(status_text) + 32;
     char *response = malloc(response_size);
+    if (!response) {
+        CLIENT_ERROR(context, "Failed to allocate response buffer of size %d", response_size);
+        free(payload);
+        return;
+    }
     int response_len = snprintf(response, response_size, http_headers, status_code, status_text, payload_size);
 
     if (response_size - response_len < payload_size + 1) {
@@ -848,8 +854,6 @@ void send_json_error_response(client_context_t *context, int status_code, HAPSta
     cJSON_AddNumberToObject(json, "status", status);
 
     send_json_response(context, status_code, json);
-
-    cJSON_Delete(json);
 }
 
 
@@ -985,8 +989,6 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             free(salt);
 
             send_tlv_response(context, response);
-
-            tlv_free(response);
             break;
         }
         case 3: {
@@ -1047,8 +1049,6 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             free(server_proof);
 
             send_tlv_response(context, response);
-
-            tlv_free(response);
             break;
         }
         case 5: {
@@ -1592,8 +1592,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             send_tlv_response(context, response);
 
-            tlv_free(response);
-
             if (context->verify_context)
                 pair_verify_context_free(context->verify_context);
 
@@ -1806,8 +1804,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             send_tlv_response(context, response);
 
-            tlv_free(response);
-
             context->pairing_id = pairing_id;
             context->permissions = permissions;
             context->encrypted = true;
@@ -1880,8 +1876,6 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     }
 
     send_json_response(context, 200, json);
-
-    cJSON_Delete(json);
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
@@ -1981,8 +1975,6 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     }
 
     send_json_response(context, success ? 200 : 207, json);
-
-    cJSON_Delete(json);
 }
 
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
@@ -2282,7 +2274,6 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         cJSON *result = cJSON_CreateObject();
         cJSON_AddItemToObject(result, "characteristics", result_characteristics);
         send_json_response(context, 207, result);
-        cJSON_Delete(result);
     } else {
         CLIENT_DEBUG(context, "There were no processing errors, sending No Content response");
 
@@ -2425,8 +2416,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
             send_tlv_response(context, response);
 
-            tlv_free(response);
-
             break;
         }
         case TLVMethod_RemovePairing: {
@@ -2505,8 +2494,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             tlv_add_integer_value(response, TLVType_State, 2);
 
             send_tlv_response(context, response);
-
-            tlv_free(response);
             break;
         }
         case TLVMethod_ListPairings: {
@@ -2548,8 +2535,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             free(public_key);
 
             send_tlv_response(context, response);
-
-            tlv_free(response);
             break;
         }
         default: {
