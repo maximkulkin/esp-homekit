@@ -30,6 +30,7 @@
 
 
 #define PORT 5556
+#define HOMEKIT_MAX_CLIENTS 8
 
 
 struct _client_context_t;
@@ -79,6 +80,9 @@ typedef struct {
     bool paired;
     pairing_context_t *pairing_context;
 
+    struct pollfd *fds;
+    int nfds;
+
     client_context_t *clients;
 } homekit_server_t;
 
@@ -89,8 +93,13 @@ struct _client_context_t {
     homekit_endpoint_t endpoint;
     query_param_t *endpoint_params;
 
+    byte *data;
+    size_t data_size;
+    size_t data_available;
+
     char *body;
     size_t body_length;
+    http_parser *parser;
 
     int pairing_id;
     byte permissions;
@@ -122,6 +131,8 @@ void pairing_context_free(pairing_context_t *context);
 
 homekit_server_t *server_new() {
     homekit_server_t *server = malloc(sizeof(homekit_server_t));
+    server->fds = malloc(sizeof(struct pollfd) * (HOMEKIT_MAX_CLIENTS+1));
+    server->nfds = 0;
     server->accessory_id = NULL;
     server->accessory_key = NULL;
     server->config = NULL;
@@ -141,6 +152,9 @@ void server_free(homekit_server_t *server) {
 
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
+
+    if (server->fds)
+        free(server->fds);
 
     if (server->clients) {
         client_context_t *client = server->clients;
@@ -288,8 +302,16 @@ client_context_t *client_context_new() {
     client_context_t *c = malloc(sizeof(client_context_t));
     c->server = NULL;
     c->endpoint_params = NULL;
+
+    c->data_size = 1024 + 18;
+    c->data_available = 0;
+    c->data = malloc(c->data_size);
+
     c->body = NULL;
     c->body_length = 0;
+    c->parser = malloc(sizeof(*c->parser));
+    http_parser_init(c->parser, HTTP_REQUEST);
+    c->parser->data = c;
 
     c->pairing_id = -1;
     c->encrypted = false;
@@ -324,6 +346,9 @@ void client_context_free(client_context_t *c) {
 
     if (c->endpoint_params)
         query_params_free(c->endpoint_params);
+
+    if (c->parser)
+        free(c->parser);
 
     if (c->body)
         free(c->body);
@@ -2679,182 +2704,82 @@ static http_parser_settings homekit_http_parser_settings = {
 };
 
 
-static void homekit_client_task(void *_context);
-
-static void homekit_pairing_task(void *_context) {
-    DEBUG("Starting pairing task");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
-
-    client_context_t *context = (client_context_t *)_context;
-
-    http_parser *parser = malloc(sizeof(http_parser));
-    http_parser_init(parser, HTTP_REQUEST);
-
-    parser->data = context;
-
-    const size_t data_size = 256;
-    byte *data = malloc(data_size);
-    for (;;) {
-        if (context->disconnect) {
-            CLIENT_INFO(context, "Force disconnect");
-            break;
-        }
-
-        if (context->server->paired) {
-            // already paired, run client in a separate task
-            xTaskCreate(homekit_client_task, "HomeKit Client", 768, context, 2, NULL);
-            context = NULL;
-            break;
-        }
-
-        int data_len = lwip_read(context->socket, data, data_size);
-        if (data_len == 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
-            // connection closed
-            break;
-        }
-
-        if (data_len > 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
-            byte *payload = (byte *)data;
-            size_t payload_size = (size_t)data_len;
-
-            http_parser_execute(
-                parser, &homekit_http_parser_settings,
-                (char *)payload, payload_size
-            );
-
-            if (context->encrypted) {
-                free(payload);
-            }
-        }
-
-        vTaskDelay(1);
+static void homekit_client_process(client_context_t *context) {
+    int data_len = lwip_read(
+        context->socket,
+        context->data+context->data_available,
+        context->data_size-context->data_available
+    );
+    if (data_len == 0) {
+        context->disconnect = true;
+        return;
     }
 
-    free(data);
-    free(parser);
+    if (data_len < 0) {
+        if (errno != EAGAIN)
+            CLIENT_ERROR(context, "Error reading data (code %d)", errno);
+        return;
+    }
 
-    if (context) {
-        CLIENT_INFO(context, "Closing client connection");
+    CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+    byte *payload = (byte *)context->data;
+    size_t payload_size = (size_t)data_len;
 
-        lwip_close(context->socket);
+    byte *decrypted = NULL;
+    size_t decrypted_size = 0;
 
-        if (context->server->pairing_context && context->server->pairing_context->client == context) {
-            pairing_context_free(context->server->pairing_context);
-            context->server->pairing_context = NULL;
+    if (context->encrypted) {
+        CLIENT_DEBUG(context, "Decrypting data");
+
+        client_decrypt(context, context->data, data_len, NULL, &decrypted_size);
+
+        decrypted = malloc(decrypted_size);
+        int r = client_decrypt(context, context->data, data_len, decrypted, &decrypted_size);
+        if (r < 0) {
+            CLIENT_ERROR(context, "Invalid client data");
+            free(decrypted);
+            return;
         }
-
-        if (context->server->clients == context) {
-            context->server->clients = context->next;
-        } else {
-            client_context_t *c = context->server->clients;
-            while (c->next && c->next != context)
-                c = c->next;
-            if (c->next)
-                c->next = c->next->next;
+        context->data_available = data_len - r;
+        if (r && context->data_available) {
+            memmove(context->data, &context->data[r], context->data_available);
         }
+        CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, context->data_available);
 
-        client_context_free(context);
+        payload = decrypted;
+        payload_size = decrypted_size;
+        if (payload_size)
+            print_binary("Decrypted data", payload, payload_size);
+    } else {
+        context->data_available = 0;
+    }
+
+    http_parser_execute(
+        context->parser, &homekit_http_parser_settings,
+        (char *)payload, payload_size
+    );
+
+    CLIENT_DEBUG(context, "Finished processing");
+
+    if (decrypted) {
+        free(decrypted);
     }
 }
 
 
-static void homekit_client_task(void *_context) {
-    DEBUG("Starting client task");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
-
-    client_context_t *context = _context;
-
-    http_parser *parser = malloc(sizeof(http_parser));
-    http_parser_init(parser, HTTP_REQUEST);
-
-    parser->data = context;
-
-    size_t data_size = 1024 + 18;
-    size_t available = 0;
-    byte *data = malloc(data_size);
-    for (;;) {
-        if (context->disconnect) {
-            CLIENT_INFO(context, "Force disconnect");
-            break;
-        }
-
-        characteristic_event_t *event = NULL;
-        while (xQueueReceive(context->event_queue, &event, 0)) {
-            CLIENT_DEBUG(
-                context,
-                "Received event for %d.%d",
-                event->characteristic->service->accessory->id,
-                event->characteristic->id
-            );
-            send_characteristic_event(context, event->characteristic, event->value);
-
-            CLIENT_DEBUG(context, "Freeing event");
-            homekit_value_destruct(&event->value);
-            free(event);
-        }
-
-        int data_len = lwip_read(context->socket, data+available, data_size-available);
-        if (data_len == 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
-            // connection closed
-            break;
-        }
-
-        if (data_len > 0) {
-            CLIENT_DEBUG(context, "Got %d incomming data", data_len);
-            byte *payload = (byte *)data;
-            size_t payload_size = (size_t)data_len;
-
-            byte *decrypted = NULL;
-            size_t decrypted_size = 0;
-
-            if (context->encrypted) {
-                CLIENT_DEBUG(context, "Decrypting data");
-
-                client_decrypt(context, data, data_len, NULL, &decrypted_size);
-
-                decrypted = malloc(decrypted_size);
-                int r = client_decrypt(context, data, data_len, decrypted, &decrypted_size);
-                if (r < 0) {
-                    CLIENT_ERROR(context, "Invalid client data");
-                    free(decrypted);
-                    break;
-                }
-                available = data_len - r;
-                if (r && available) {
-                    memmove(data, &data[r], available);
-                }
-                CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, available);
-
-                payload = decrypted;
-                payload_size = decrypted_size;
-                if (payload_size)
-                    print_binary("Decrypted data", payload, payload_size);
-            } else {
-                available = 0;
-            }
-
-            http_parser_execute(
-                parser, &homekit_http_parser_settings,
-                (char *)payload, payload_size
-            );
-
-            if (decrypted) {
-                free(decrypted);
-            }
-        }
-
-        vTaskDelay(1);
-    }
-
+void homekit_server_close_client(homekit_server_t *server, client_context_t *context) {
     CLIENT_INFO(context, "Closing client connection");
+
+    for (int i=1; i<server->nfds; i++) {
+        if (server->fds[i].fd == context->socket) {
+            server->fds[i] = server->fds[server->nfds-1];
+            server->nfds--;
+            break;
+        }
+    }
 
     lwip_close(context->socket);
 
-    free(data);
-    free(parser);
     if (context->server->pairing_context && context->server->pairing_context->client == context) {
         pairing_context_free(context->server->pairing_context);
         context->server->pairing_context = NULL;
@@ -2877,12 +2802,91 @@ static void homekit_client_task(void *_context) {
     );
 
     client_context_free(context);
-
-    vTaskDelete(NULL);
 }
 
 
-static void run_server(homekit_server_t *server)
+client_context_t *homekit_server_accept_client(homekit_server_t *server) {
+    int s = accept(server->fds[0].fd, (struct sockaddr *)NULL, (socklen_t *)NULL);
+    if (s < 0)
+        return NULL;
+
+    if (server->nfds > HOMEKIT_MAX_CLIENTS) {
+        INFO("No more room for client connections");
+        lwip_close(s);
+        return NULL;
+    }
+
+    INFO("Got new client connection: %d", s);
+
+    const struct timeval sndtimeout = { 10, 0 }; /* 10 second timeout */
+    const struct timeval rcvtimeout = { 1, 0 }; /* 1 second timeout */
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &sndtimeout, sizeof(sndtimeout));
+
+    client_context_t *context = client_context_new();
+    context->server = server;
+    context->socket = s;
+    context->next = server->clients;
+
+    server->clients = context;
+
+    server->fds[server->nfds].fd = s;
+    server->fds[server->nfds].events = POLLIN;
+    server->nfds++;
+
+    return context;
+}
+
+
+client_context_t *homekit_server_find_client_by_fd(homekit_server_t *server, int fd) {
+    client_context_t *context = server->clients;
+    while (context) {
+        if (context->socket == fd)
+            return context;
+        context = context->next;
+    }
+
+    return NULL;
+}
+
+
+void homekit_server_process_notifications(homekit_server_t *server) {
+    client_context_t *context = server->clients;
+    while (context) {
+        characteristic_event_t *event = NULL;
+        while (xQueueReceive(context->event_queue, &event, 0)) {
+            CLIENT_DEBUG(
+                context,
+                "Received event for %d.%d",
+                event->characteristic->service->accessory->id,
+                event->characteristic->id
+            );
+            send_characteristic_event(context, event->characteristic, event->value);
+
+            CLIENT_DEBUG(context, "Freeing event");
+            homekit_value_destruct(&event->value);
+            free(event);
+        }
+
+        context = context->next;
+    }
+}
+
+
+void homekit_server_close_clients(homekit_server_t *server) {
+    client_context_t *context = server->clients;
+    while (context) {
+        client_context_t *next = context->next;
+
+        if (context->disconnect)
+            homekit_server_close_client(server, context);
+
+        context = next;
+    }
+}
+
+
+static void homekit_run_server(homekit_server_t *server)
 {
     DEBUG("Staring HTTP server");
 
@@ -2895,29 +2899,34 @@ static void run_server(homekit_server_t *server)
     bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     listen(listenfd, 10);
 
+    server->nfds = 1;
+    server->fds[0].fd = listenfd;
+    server->fds[0].events = POLLIN;
+
     for (;;) {
-        int s = accept(listenfd, (struct sockaddr *)NULL, (socklen_t *)NULL);
-        if (s >= 0) {
-            INFO("Got new client connection: %d", s);
-
-            const struct timeval sndtimeout = { 10, 0 }; /* 10 second timeout */
-            const struct timeval rcvtimeout = { 1, 0 }; /* 1 second timeout */
-            setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
-            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &sndtimeout, sizeof(sndtimeout));
-
-            client_context_t *context = client_context_new();
-            context->server = server;
-            context->socket = s;
-            context->next = server->clients;
-
-            server->clients = context;
-
-            if (!server->paired) {
-                homekit_pairing_task(context);
-            } else {
-                xTaskCreate(homekit_client_task, "HomeKit Client", 768, context, 2, NULL);
+        int triggered_nfds = poll(server->fds, server->nfds, 1000);
+        if (triggered_nfds) {
+            if (server->fds[0].revents & POLLIN) {
+                homekit_server_accept_client(server);
+                triggered_nfds--;
             }
+
+            for (int i=1; i<server->nfds && triggered_nfds; i++) {
+                if (!server->fds[i].revents & POLLIN)
+                    continue;
+
+                client_context_t *context = homekit_server_find_client_by_fd(server, server->fds[i].fd);
+                if (context) {
+                    homekit_client_process(context);
+                }
+
+                triggered_nfds--;
+            }
+
+            homekit_server_close_clients(server);
         }
+
+        homekit_server_process_notifications(server);
     }
 
     server_free(server);
@@ -3059,7 +3068,7 @@ void homekit_server_task(void *args) {
     mdns_init();
     homekit_setup_mdns(server);
 
-    run_server(server);
+    homekit_run_server(server);
 
     vTaskDelete(NULL);
 }
