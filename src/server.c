@@ -698,24 +698,29 @@ void client_send(client_context_t *context, byte *data, size_t data_size) {
     byte *payload = data;
     size_t payload_size = data_size;
 
+    byte *encrypted = NULL;
+
     if (context->encrypted) {
         CLIENT_DEBUG(context, "Encrypting payload");
-        payload_size = 0;
-        client_encrypt(context, data, data_size, NULL, &payload_size);
+        size_t encrypted_size = 0;
+        client_encrypt(context, data, data_size, NULL, &encrypted_size);
 
-        payload = malloc(payload_size);
-        int r = client_encrypt(context, data, data_size, payload, &payload_size);
+        encrypted = malloc(payload_size);
+        int r = client_encrypt(context, data, data_size, payload, &encrypted_size);
         if (r) {
             CLIENT_ERROR(context, "Failed to encrypt response (code %d)", r);
-            free(payload);
+            free(encrypted);
             return;
         }
+
+        payload = encrypted;
+        payload_size = encrypted_size;
     }
 
     lwip_write(context->socket, payload, payload_size);
 
-    if (context->encrypted) {
-        free(payload);
+    if (encrypted) {
+        free(encrypted);
     }
 }
 
