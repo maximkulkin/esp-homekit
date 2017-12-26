@@ -720,6 +720,7 @@ void send_404_response(client_context_t *context) {
 
 void send_characteristic_event(client_context_t *context, const homekit_characteristic_t *ch, const homekit_value_t value) {
     CLIENT_DEBUG(context, "Sending EVENT");
+    DEBUG_HEAP();
 
     cJSON *json = cJSON_CreateObject();
     cJSON *characteristics = cJSON_CreateArray();
@@ -821,6 +822,7 @@ void send_tlv_response(client_context_t *context, tlv_values_t *values) {
 
 void send_json_response(client_context_t *context, int status_code, cJSON *root) {
     CLIENT_DEBUG(context, "Sending JSON response");
+    DEBUG_HEAP();
 
     static char *http_headers =
         "HTTP/1.1 %d %s\r\n"
@@ -884,6 +886,7 @@ void send_json_error_response(client_context_t *context, int status_code, HAPSta
 
 void homekit_server_on_identify(client_context_t *context) {
     CLIENT_INFO(context, "Identify");
+    DEBUG_HEAP();
 
     if (context->server->paired) {
         // Already paired
@@ -918,7 +921,7 @@ void homekit_server_on_identify(client_context_t *context) {
 
 void homekit_server_on_pair_setup(client_context_t *context, const byte *data, size_t size) {
     DEBUG("Pair Setup");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
@@ -928,7 +931,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
     switch(tlv_get_integer_value(message, TLVType_State, -1)) {
         case 1: {
             CLIENT_INFO(context, "Pair Setup Step 1/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             if (context->server->paired) {
                 CLIENT_INFO(context, "Refusing to pair: already paired");
                 send_tlv_error_response(context, 2, TLVError_Unavailable);
@@ -947,7 +950,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             CLIENT_DEBUG(context, "Initializing crypto");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
 
             char password[11];
             if (context->server->config->password) {
@@ -1018,7 +1021,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
         }
         case 3: {
             CLIENT_INFO(context, "Pair Setup Step 2/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             tlv_t *device_public_key = tlv_get_value(message, TLVType_PublicKey);
             if (!device_public_key) {
                 CLIENT_ERROR(context, "Invalid payload: no device public key");
@@ -1034,7 +1037,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             CLIENT_DEBUG(context, "Computing SRP shared secret");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             int r = crypto_srp_compute_key(
                 context->server->pairing_context->srp,
                 device_public_key->value, device_public_key->size,
@@ -1052,7 +1055,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             context->server->pairing_context->public_key_size = 0;
 
             CLIENT_DEBUG(context, "Verifying peer's proof");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             r = crypto_srp_verify(context->server->pairing_context->srp, proof->value, proof->size);
             if (r) {
                 CLIENT_ERROR(context, "Failed to verify peer's proof (code %d)", r);
@@ -1078,7 +1081,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
         }
         case 5: {
             CLIENT_INFO(context, "Pair Setup Step 3/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
 
             int r;
 
@@ -1307,7 +1310,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                    accessory_public_key, accessory_public_key_size);
 
             CLIENT_DEBUG(context, "Generating accessory signature");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             size_t accessory_signature_size = 0;
             crypto_ed25519_sign(
                 context->server->accessory_key,
@@ -1420,7 +1423,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
 void homekit_server_on_pair_verify(client_context_t *context, const byte *data, size_t size) {
     DEBUG("HomeKit Pair Verify");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
@@ -1849,7 +1852,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
 void homekit_server_on_get_accessories(client_context_t *context) {
     CLIENT_INFO(context, "Get Accessories");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     cJSON *json = cJSON_CreateObject();
     cJSON *j_accessories = cJSON_CreateArray();
@@ -1905,7 +1908,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     query_param_t *qp = context->endpoint_params;
     while (qp) {
@@ -2004,6 +2007,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
     CLIENT_INFO(context, "Update Characteristics");
+    DEBUG_HEAP();
 
     char *json_string = strndup((char *)data, size);
     cJSON *json = cJSON_Parse(json_string);
@@ -2311,7 +2315,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
 void homekit_server_on_pairings(client_context_t *context, const byte *data, size_t size) {
     DEBUG("HomeKit Pairings");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
