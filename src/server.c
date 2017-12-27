@@ -2605,6 +2605,8 @@ void homekit_server_on_reset(client_context_t *context) {
     homekit_storage_reset();
     send_204_response(context);
 
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+
     sdk_system_restart();
 }
 
