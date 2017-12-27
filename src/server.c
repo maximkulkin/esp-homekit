@@ -391,21 +391,6 @@ typedef enum {
 } characteristic_format_t;
 
 
-typedef struct {
-    byte *data;
-    size_t size;
-} buffer_t;
-
-void flush_to_buffer(byte *data, size_t size, void *context) {
-    buffer_t *buffer = context;
-    buffer->data = realloc(buffer->data, buffer->size + size + 1);
-    memcpy(buffer->data + buffer->size, data, size);
-    buffer->size += size;
-    if (buffer->size)
-        buffer->data[buffer->size] = 0;
-}
-
-
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
     json_string(json, "aid"); json_integer(json, ch->service->accessory->id);
     json_string(json, "iid"); json_integer(json, ch->id);
@@ -561,27 +546,18 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
 }
 
 
-int client_encrypt(
+int client_send_encrypted(
     client_context_t *context,
-    byte *payload, size_t size,
-    byte *encrypted, size_t *encrypted_size
+    byte *payload, size_t size
 ) {
     if (!context || !context->encrypted || !context->read_key)
         return -1;
 
-    size_t required_encrypted_size = size + (size + 1023) / 1024 * 18;
-    if (*encrypted_size < required_encrypted_size) {
-        *encrypted_size = required_encrypted_size;
-        return -2;
-    }
-
-    *encrypted_size = required_encrypted_size;
-
     byte nonce[12];
     memset(nonce, 0, sizeof(nonce));
 
+    byte encrypted[1024 + 18];
     int payload_offset = 0;
-    int encrypted_offset = 0;
 
     while (payload_offset < size) {
         size_t chunk_size = size - payload_offset;
@@ -590,7 +566,7 @@ int client_encrypt(
 
         byte aead[2] = {chunk_size % 256, chunk_size / 256};
 
-        memcpy(encrypted+encrypted_offset, aead, 2);
+        memcpy(encrypted, aead, 2);
 
         byte i = 4;
         int x = context->count_reads++;
@@ -599,11 +575,11 @@ int client_encrypt(
             x /= 256;
         }
 
-        size_t available = *encrypted_size - encrypted_offset - 2;
+        size_t available = sizeof(encrypted) - 2;
         int r = crypto_chacha20poly1305_encrypt(
             context->read_key, nonce, aead, 2,
             payload+payload_offset, chunk_size,
-            encrypted+encrypted_offset+2, &available
+            encrypted+2, &available
         );
         if (r) {
             ERROR("Failed to chacha encrypt payload (code %d)", r);
@@ -611,7 +587,8 @@ int client_encrypt(
         }
 
         payload_offset += chunk_size;
-        encrypted_offset += available + 2;
+
+        lwip_write(context->socket, encrypted, available + 2);
     }
 
     return 0;
@@ -695,34 +672,34 @@ void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t 
 
 
 void client_send(client_context_t *context, byte *data, size_t data_size) {
-    byte *payload = data;
-    size_t payload_size = data_size;
-
-    byte *encrypted = NULL;
-
     if (context->encrypted) {
-        CLIENT_DEBUG(context, "Encrypting payload");
-        size_t encrypted_size = 0;
-        client_encrypt(context, data, data_size, NULL, &encrypted_size);
-
-        encrypted = malloc(payload_size);
-        int r = client_encrypt(context, data, data_size, payload, &encrypted_size);
+        int r = client_send_encrypted(context, data, data_size);
         if (r) {
             CLIENT_ERROR(context, "Failed to encrypt response (code %d)", r);
-            free(encrypted);
             return;
         }
-
-        payload = encrypted;
-        payload_size = encrypted_size;
-    }
-
-    lwip_write(context->socket, payload, payload_size);
-
-    if (encrypted) {
-        free(encrypted);
+    } else {
+        lwip_write(context->socket, data, data_size);
     }
 }
+
+
+void client_send_chunk(byte *data, size_t size, void *arg) {
+    client_context_t *context = arg;
+
+    size_t payload_size = size + 8;
+    byte *payload = malloc(payload_size);
+
+    int offset = snprintf((char *)payload, payload_size, "%x\r\n", size);
+    memcpy(payload + offset, data, size);
+    payload[offset + size] = '\r';
+    payload[offset + size + 1] = '\n';
+
+    client_send(context, payload, offset + size + 2);
+
+    free(payload);
+}
+
 
 void send_204_response(client_context_t *context) {
     static char response[] = "HTTP/1.1 204 No Content\r\n\r\n";
@@ -739,10 +716,14 @@ void send_characteristic_event(client_context_t *context, const homekit_characte
     CLIENT_DEBUG(context, "Sending EVENT");
     DEBUG_HEAP();
 
-    buffer_t payload;
-    memset(&payload, 0, sizeof(payload));
+    static byte http_headers[] =
+        "EVENT/1.0 200 OK\r\n"
+        "Content-Type: application/hap+json\r\n"
+        "Transfer-Encoding: chunked\r\n\r\n";
 
-    json_stream *json = json_new(256, flush_to_buffer, &payload);
+    client_send(context, http_headers, sizeof(http_headers)-1);
+
+    json_stream *json = json_new(256, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
@@ -756,32 +737,7 @@ void send_characteristic_event(client_context_t *context, const homekit_characte
     json_flush(json);
     json_free(json);
 
-    static char *http_headers =
-        "EVENT/1.0 200 OK\r\n"
-        "Content-Type: application/hap+json\r\n"
-        "Content-Length: %d\r\n\r\n";
-
-    int event_size = strlen(http_headers) + payload.size + 1;
-    char *event = malloc(event_size);
-    int event_len = snprintf(event, event_size, http_headers, payload.size);
-
-    if (event_size - event_len < payload.size + 1) {
-        CLIENT_ERROR(context, "Incorrect event buffer size %d: headers took %d, payload size %d", event_size, event_len, payload.size);
-        free(event);
-        free(payload.data);
-        return;
-    }
-    memcpy(event+event_len, payload.data, payload.size);
-    event_len += payload.size;
-    event[event_len] = 0;  // required for debug output
-
-    free(payload.data);
-
-    CLIENT_DEBUG(context, "Sending EVENT: %s", event);
-
-    client_send(context, (byte *)event, event_len);
-
-    free(event);
+    client_send_chunk(NULL, 0, context);
 }
 
 
@@ -838,6 +794,20 @@ void send_tlv_response(client_context_t *context, tlv_values_t *values) {
 
     free(response);
 }
+
+
+static byte json_200_response_headers[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: application/hap+json\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n\r\n";
+
+
+static byte json_207_response_headers[] =
+    "HTTP/1.1 207 Multi-Status\r\n"
+    "Content-Type: application/hap+json\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n\r\n";
 
 
 void send_json_response(client_context_t *context, int status_code, byte *payload, size_t payload_size) {
@@ -1866,10 +1836,9 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     CLIENT_INFO(context, "Get Accessories");
     DEBUG_HEAP();
 
-    buffer_t payload;
-    memset(&payload, 0, sizeof(payload));
+    client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
 
-    json_stream *json = json_new(1024, flush_to_buffer, &payload);
+    json_stream *json = json_new(1024, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "accessories"); json_array_start(json);
 
@@ -1925,10 +1894,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     json_flush(json);
     json_free(json);
 
-    send_json_response(context, 200, payload.data, payload.size);
-
-    if (payload.data)
-        free(payload.data);
+    client_send_chunk(NULL, 0, context);
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
@@ -1997,10 +1963,13 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     free(id);
     id = strdup(id_param->value);
 
-    buffer_t payload;
-    memset(&payload, 0, sizeof(payload));
+    if (success) {
+        client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
+    } else {
+        client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
+    }
 
-    json_stream *json = json_new(256, flush_to_buffer, &payload);
+    json_stream *json = json_new(256, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
@@ -2044,12 +2013,9 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     json_flush(json);
     json_free(json);
 
+    client_send_chunk(NULL, 0, context);
+
     free(id);
-
-    send_json_response(context, success ? 200 : 207, payload.data, payload.size);
-
-    if (payload.data)
-        free(payload.data);
 }
 
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
@@ -2324,13 +2290,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         return HAPStatus_Success;
     }
 
-    buffer_t payload;
-    memset(&payload, 0, sizeof(payload));
-
-    json_stream *json1 = json_new(1024, flush_to_buffer, &payload);
-    json_object_start(json1);
-    json_string(json1, "characteristics"); json_array_start(json1);
-
+    HAPStatus *statuses = malloc(sizeof(HAPStatus) * cJSON_GetArraySize(characteristics));
     bool has_errors = false;
     for (int i=0; i < cJSON_GetArraySize(characteristics); i++) {
         cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
@@ -2339,33 +2299,41 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         CLIENT_DEBUG(context, "Processing element %s", s);
         free(s);
 
-        HAPStatus status = process_characteristics_update(j_ch);
+        statuses[i] = process_characteristics_update(j_ch);
 
-        if (status != HAPStatus_Success)
+        if (statuses[i] != HAPStatus_Success)
             has_errors = true;
-
-        json_object_start(json1);
-        json_string(json1, "aid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
-        json_string(json1, "iid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
-        json_string(json1, "status"); json_integer(json1, status);
-        json_object_end(json1);
     }
 
-    if (has_errors) {
-        CLIENT_DEBUG(context, "There were processing errors, sending Multi-Status response");
-
-        json_flush(json1);
-
-        send_json_response(context, 207, payload.data, payload.size);
-    } else {
+    if (!has_errors) {
         CLIENT_DEBUG(context, "There were no processing errors, sending No Content response");
 
         send_204_response(context);
+    } else {
+        CLIENT_DEBUG(context, "There were processing errors, sending Multi-Status response");
+        client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
+
+        json_stream *json1 = json_new(1024, client_send_chunk, context);
+        json_object_start(json1);
+        json_string(json1, "characteristics"); json_array_start(json1);
+
+        for (int i=0; i < cJSON_GetArraySize(characteristics); i++) {
+            cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
+
+            json_object_start(json1);
+            json_string(json1, "aid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
+            json_string(json1, "iid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
+            json_string(json1, "status"); json_integer(json1, statuses[i]);
+            json_object_end(json1);
+        }
+
+        json_flush(json1);
+        json_free(json1);
+
+        client_send_chunk(NULL, 0, context);
     }
 
-    json_free(json1);
-    if (payload.data)
-        free(payload.data);
+    free(statuses);
     cJSON_Delete(json);
 }
 
@@ -2923,7 +2891,6 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             );
             send_characteristic_event(context, event->characteristic, event->value);
 
-            CLIENT_DEBUG(context, "Freeing event");
             homekit_value_destruct(&event->value);
             free(event);
         }
@@ -3165,5 +3132,5 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
-    xTaskCreate(homekit_server_task, "HomeKit Server", 1700, server, 1, NULL);
+    xTaskCreate(homekit_server_task, "HomeKit Server", 2048, server, 1, NULL);
 }
