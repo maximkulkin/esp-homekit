@@ -75,10 +75,10 @@ void json_write(json_stream *json, const char *format, ...) {
     va_start(arg_ptr, format);
 
     int len = vsnprintf((char *)json->buffer + json->pos, json->size - json->pos, format, arg_ptr);
-    if (len + json->pos > json->size) {
+    if (len + json->pos > json->size - 1) {
         json_flush(json);
         int len = vsnprintf((char *)json->buffer + json->pos, json->size - json->pos, format, arg_ptr);
-        if (len > json->size) {
+        if (len > json->size - 1) {
             ERROR("Write value too large");
             DEBUG("Format = %s", format);
         } else {
