@@ -2069,11 +2069,13 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
     cJSON *characteristics = cJSON_GetObjectItem(json, "characteristics");
     if (!characteristics) {
         CLIENT_ERROR(context, "Failed to parse request: no \"characteristics\" field");
+        cJSON_Delete(json);
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
     if (characteristics->type != cJSON_Array) {
         CLIENT_ERROR(context, "Failed to parse request: \"characteristics\" field is not an list");
+        cJSON_Delete(json);
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
@@ -2364,6 +2366,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
     json_free(json1);
     if (payload.data)
         free(payload.data);
+    cJSON_Delete(json);
 }
 
 void homekit_server_on_pairings(client_context_t *context, const byte *data, size_t size) {
