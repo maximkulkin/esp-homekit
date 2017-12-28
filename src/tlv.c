@@ -20,6 +20,7 @@ void tlv_free(tlv_values_t *values) {
             free(t2->value);
         free(t2);
     }
+    free(values);
 }
 
 

@@ -351,6 +351,9 @@ void client_context_free(client_context_t *c) {
     if (c->parser)
         free(c->parser);
 
+    if (c->data)
+        free(c->data);
+
     if (c->body)
         free(c->body);
 
@@ -1242,6 +1245,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 CLIENT_ERROR(context, "Failed to store pairing (code %d)", r);
 
                 free(device_id);
+                crypto_ed25519_free(device_key);
+                tlv_free(decrypted_message);
                 send_tlv_error_response(context, 6, TLVError_Unknown);
                 break;
             }
@@ -1946,6 +1951,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         char *dot = strstr(ch_id, ".");
         if (!dot) {
             send_json_error_response(context, 400, HAPStatus_InvalidValue);
+            free(id);
             return;
         }
 
@@ -2251,9 +2257,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         h_value = HOMEKIT_STRING(value);
                         ch->setter(h_value);
                     } else {
-                        if (ch->value.string_value && !ch->value.is_static) {
-                            free(ch->value.string_value);
-                        }
+                        homekit_value_destruct(&ch->value);
                         h_value = HOMEKIT_STRING(strdup(value));
                         ch->value = h_value;
                     }
