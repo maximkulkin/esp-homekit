@@ -2756,8 +2756,10 @@ static void homekit_client_process(client_context_t *context) {
     }
 
     if (data_len < 0) {
-        if (errno != EAGAIN)
-            CLIENT_ERROR(context, "Error reading data (code %d)", errno);
+        if (errno != EAGAIN) {
+            CLIENT_ERROR(context, "Error reading data from socket (code %d). Disconnecting", errno);
+            context->disconnect = true;
+        }
         return;
     }
 
