@@ -23,6 +23,7 @@
 #include "pairing.h"
 #include "storage.h"
 #include "query_params.h"
+#include "json.h"
 #include "debug.h"
 
 #include "homekit/homekit.h"
@@ -350,6 +351,9 @@ void client_context_free(client_context_t *c) {
     if (c->parser)
         free(c->parser);
 
+    if (c->data)
+        free(c->data);
+
     if (c->body)
         free(c->body);
 
@@ -390,40 +394,40 @@ typedef enum {
 } characteristic_format_t;
 
 
-cJSON *characteristic_to_json(client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
-    cJSON *j_ch = cJSON_CreateObject();
-    cJSON_AddNumberToObject(j_ch, "aid", ch->service->accessory->id);
-    cJSON_AddNumberToObject(j_ch, "iid", ch->id);
+void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
+    json_string(json, "aid"); json_integer(json, ch->service->accessory->id);
+    json_string(json, "iid"); json_integer(json, ch->id);
 
     if (format & characteristic_format_type) {
-        cJSON_AddStringToObject(j_ch, "type", ch->type);
+        json_string(json, "type"); json_string(json, ch->type);
     }
 
     if (format & characteristic_format_perms) {
-        cJSON *j_perms = cJSON_CreateArray();
-        cJSON_AddItemToObject(j_ch, "perms", j_perms);
+        json_string(json, "perms"); json_array_start(json);
         if (ch->permissions & homekit_permissions_paired_read)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("pr"));
+            json_string(json, "pr");
         if (ch->permissions & homekit_permissions_paired_write)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("pw"));
+            json_string(json, "pw");
         if (ch->permissions & homekit_permissions_notify)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("ev"));
+            json_string(json, "ev");
         if (ch->permissions & homekit_permissions_additional_authorization)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("aa"));
+            json_string(json, "aa");
         if (ch->permissions & homekit_permissions_timed_write)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("tw"));
+            json_string(json, "tw");
         if (ch->permissions & homekit_permissions_hidden)
-            cJSON_AddItemToArray(j_perms, cJSON_CreateString("hd"));
+            json_string(json, "hd");
+        json_array_end(json);
     }
 
     if ((format & characteristic_format_events) && (ch->permissions & homekit_permissions_notify)) {
         bool events = homekit_characteristic_has_notify_callback(ch, client_notify_characteristic, client);
-        cJSON_AddItemToObject(j_ch, "ev", cJSON_CreateBool(events));
+        json_string(json, "ev"); json_boolean(json, events);
     }
 
     if (format & characteristic_format_meta) {
-        if (ch->description)
-            cJSON_AddStringToObject(j_ch, "description", ch->description);
+        if (ch->description) {
+            json_string(json, "description"); json_string(json, ch->description);
+        }
 
         const char *format_str = NULL;
         switch(ch->format) {
@@ -438,8 +442,9 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
             case homekit_format_tlv: format_str = "tlv"; break;
             case homekit_format_data: format_str = "data"; break;
         }
-        if (format_str)
-            cJSON_AddStringToObject(j_ch, "format", format_str);
+        if (format_str) {
+            json_string(json, "format"); json_string(json, format_str);
+        }
 
         const char *unit_str = NULL;
         switch(ch->unit) {
@@ -450,68 +455,67 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
             case homekit_unit_lux: unit_str = "lux"; break;
             case homekit_unit_seconds: unit_str = "seconds"; break;
         }
-        if (unit_str)
-            cJSON_AddStringToObject(j_ch, "unit", unit_str);
+        if (unit_str) {
+            json_string(json, "unit"); json_string(json, unit_str);
+        }
 
-        if (ch->min_value)
-            cJSON_AddNumberToObject(j_ch, "minValue", *ch->min_value);
+        if (ch->min_value) {
+            json_string(json, "minValue"); json_float(json, *ch->min_value);
+        }
 
-        if (ch->max_value)
-            cJSON_AddNumberToObject(j_ch, "maxValue", *ch->max_value);
+        if (ch->max_value) {
+            json_string(json, "maxValue"); json_float(json, *ch->max_value);
+        }
 
-        if (ch->min_step)
-            cJSON_AddNumberToObject(j_ch, "minStep", *ch->min_step);
+        if (ch->min_step) {
+            json_string(json, "minStep"); json_float(json, *ch->min_step);
+        }
 
-        if (ch->max_len)
-            cJSON_AddNumberToObject(j_ch, "maxLen", *ch->max_len);
+        if (ch->max_len) {
+            json_string(json, "maxLen"); json_integer(json, *ch->max_len);
+        }
 
-        if (ch->max_data_len)
-            cJSON_AddNumberToObject(j_ch, "maxDataLen", *ch->max_data_len);
+        if (ch->max_data_len) {
+            json_string(json, "maxDataLen"); json_integer(json, *ch->max_data_len);
+        }
 
         if (ch->valid_values.count) {
-            cJSON *j_valid_values = cJSON_CreateArray();
-            cJSON_AddItemToObject(j_ch, "valid-values", j_valid_values);
+            json_string(json, "valid-values"); json_array_start(json);
 
             for (int i=0; i<ch->valid_values.count; i++) {
-                cJSON_AddItemToArray(
-                    j_valid_values,
-                    cJSON_CreateNumber(ch->valid_values.values[i])
-                );
+                json_integer(json, ch->valid_values.values[i]);
             }
+
+            json_array_end(json);
         }
 
         if (ch->valid_values_ranges.count) {
-            cJSON *j_valid_values_ranges = cJSON_CreateArray();
-            cJSON_AddItemToObject(j_ch, "valid-values-range", j_valid_values_ranges);
+            json_string(json, "valid-values-range"); json_array_start(json);
 
             for (int i=0; i<ch->valid_values_ranges.count; i++) {
-                cJSON *j_range = cJSON_CreateArray();
-                cJSON_AddItemToArray(j_valid_values_ranges, j_range);
+                json_array_start(json);
 
-                cJSON_AddItemToArray(
-                    j_range,
-                    cJSON_CreateNumber(ch->valid_values_ranges.ranges[i].start)
-                );
-                cJSON_AddItemToArray(
-                    j_range,
-                    cJSON_CreateNumber(ch->valid_values_ranges.ranges[i].end)
-                );
+                json_integer(json, ch->valid_values_ranges.ranges[i].start);
+                json_integer(json, ch->valid_values_ranges.ranges[i].end);
+
+                json_array_end(json);
             }
+
+            json_array_end(json);
         }
     }
 
-    cJSON *j_value = NULL;
     if (ch->permissions & homekit_permissions_paired_read) {
         homekit_value_t v = value ? *value : (ch->getter ? ch->getter() : ch->value);
 
         if (v.is_null) {
-            // j_value = cJSON_CreateNull();
+            // json_string(json, "value"); json_null(json);
         } else if (v.format != ch->format) {
             ERROR("Characteristic value format is different from characteristic format");
         } else {
             switch(v.format) {
                 case homekit_format_bool: {
-                    j_value = cJSON_CreateBool(v.bool_value);
+                    json_string(json, "value"); json_boolean(json, v.bool_value);
                     break;
                 }
                 case homekit_format_uint8:
@@ -519,15 +523,15 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
                 case homekit_format_uint32:
                 case homekit_format_uint64:
                 case homekit_format_int: {
-                    j_value = cJSON_CreateNumber(v.int_value);
+                    json_string(json, "value"); json_integer(json, v.int_value);
                     break;
                 }
                 case homekit_format_float: {
-                    j_value = cJSON_CreateNumber(v.float_value);
+                    json_string(json, "value"); json_float(json, v.float_value);
                     break;
                 }
                 case homekit_format_string: {
-                    j_value = cJSON_CreateString(v.string_value);
+                    json_string(json, "value"); json_string(json, v.string_value);
                     break;
                 }
                 case homekit_format_tlv:
@@ -542,34 +546,21 @@ cJSON *characteristic_to_json(client_context_t *client, const homekit_characteri
             homekit_value_destruct(&v);
         }
     }
-    if (j_value)
-        cJSON_AddItemToObject(j_ch, "value", j_value);
-
-    return j_ch;
 }
 
 
-int client_encrypt(
+int client_send_encrypted(
     client_context_t *context,
-    byte *payload, size_t size,
-    byte *encrypted, size_t *encrypted_size
+    byte *payload, size_t size
 ) {
     if (!context || !context->encrypted || !context->read_key)
         return -1;
 
-    size_t required_encrypted_size = size + (size + 1023) / 1024 * 18;
-    if (*encrypted_size < required_encrypted_size) {
-        *encrypted_size = required_encrypted_size;
-        return -2;
-    }
-
-    *encrypted_size = required_encrypted_size;
-
     byte nonce[12];
     memset(nonce, 0, sizeof(nonce));
 
+    byte encrypted[1024 + 18];
     int payload_offset = 0;
-    int encrypted_offset = 0;
 
     while (payload_offset < size) {
         size_t chunk_size = size - payload_offset;
@@ -578,7 +569,7 @@ int client_encrypt(
 
         byte aead[2] = {chunk_size % 256, chunk_size / 256};
 
-        memcpy(encrypted+encrypted_offset, aead, 2);
+        memcpy(encrypted, aead, 2);
 
         byte i = 4;
         int x = context->count_reads++;
@@ -587,11 +578,11 @@ int client_encrypt(
             x /= 256;
         }
 
-        size_t available = *encrypted_size - encrypted_offset - 2;
+        size_t available = sizeof(encrypted) - 2;
         int r = crypto_chacha20poly1305_encrypt(
             context->read_key, nonce, aead, 2,
             payload+payload_offset, chunk_size,
-            encrypted+encrypted_offset+2, &available
+            encrypted+2, &available
         );
         if (r) {
             ERROR("Failed to chacha encrypt payload (code %d)", r);
@@ -599,7 +590,8 @@ int client_encrypt(
         }
 
         payload_offset += chunk_size;
-        encrypted_offset += available + 2;
+
+        lwip_write(context->socket, encrypted, available + 2);
     }
 
     return 0;
@@ -683,29 +675,40 @@ void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t 
 
 
 void client_send(client_context_t *context, byte *data, size_t data_size) {
-    byte *payload = data;
-    size_t payload_size = data_size;
+#if HOMEKIT_DEBUG
+    char *payload = binary_to_string(data, data_size);
+    CLIENT_DEBUG(context, "Sending payload: %s", payload);
+    free(payload);
+#endif
 
     if (context->encrypted) {
-        CLIENT_DEBUG(context, "Encrypting payload");
-        payload_size = 0;
-        client_encrypt(context, data, data_size, NULL, &payload_size);
-
-        payload = malloc(payload_size);
-        int r = client_encrypt(context, data, data_size, payload, &payload_size);
+        int r = client_send_encrypted(context, data, data_size);
         if (r) {
             CLIENT_ERROR(context, "Failed to encrypt response (code %d)", r);
-            free(payload);
             return;
         }
-    }
-
-    lwip_write(context->socket, payload, payload_size);
-
-    if (context->encrypted) {
-        free(payload);
+    } else {
+        lwip_write(context->socket, data, data_size);
     }
 }
+
+
+void client_send_chunk(byte *data, size_t size, void *arg) {
+    client_context_t *context = arg;
+
+    size_t payload_size = size + 8;
+    byte *payload = malloc(payload_size);
+
+    int offset = snprintf((char *)payload, payload_size, "%x\r\n", size);
+    memcpy(payload + offset, data, size);
+    payload[offset + size] = '\r';
+    payload[offset + size + 1] = '\n';
+
+    client_send(context, payload, offset + size + 2);
+
+    free(payload);
+}
+
 
 void send_204_response(client_context_t *context) {
     static char response[] = "HTTP/1.1 204 No Content\r\n\r\n";
@@ -720,47 +723,30 @@ void send_404_response(client_context_t *context) {
 
 void send_characteristic_event(client_context_t *context, const homekit_characteristic_t *ch, const homekit_value_t value) {
     CLIENT_DEBUG(context, "Sending EVENT");
+    DEBUG_HEAP();
 
-    cJSON *json = cJSON_CreateObject();
-    cJSON *characteristics = cJSON_CreateArray();
-    cJSON_AddItemToObject(json, "characteristics", characteristics);
-
-    cJSON *ch_json = characteristic_to_json(context, ch, 0, &value);
-    cJSON_AddItemToArray(characteristics, ch_json);
-
-    char *payload = cJSON_PrintUnformatted(json);
-    size_t payload_size = strlen(payload);
-
-    cJSON_Delete(json);
-
-    CLIENT_DEBUG(context, "Payload: %s", payload);
-
-    static char *http_headers =
+    static byte http_headers[] =
         "EVENT/1.0 200 OK\r\n"
         "Content-Type: application/hap+json\r\n"
-        "Content-Length: %d\r\n\r\n";
+        "Transfer-Encoding: chunked\r\n\r\n";
 
-    int event_size = strlen(http_headers) + payload_size + 1;
-    char *event = malloc(event_size);
-    int event_len = snprintf(event, event_size, http_headers, payload_size);
+    client_send(context, http_headers, sizeof(http_headers)-1);
 
-    if (event_size - event_len < payload_size + 1) {
-        CLIENT_ERROR(context, "Incorrect event buffer size %d: headers took %d, payload size %d", event_size, event_len, payload_size);
-        free(event);
-        free(payload);
-        return;
-    }
-    memcpy(event+event_len, payload, payload_size);
-    event_len += payload_size;
-    event[event_len] = 0;  // required for debug output
+    json_stream *json = json_new(256, client_send_chunk, context);
+    json_object_start(json);
+    json_string(json, "characteristics"); json_array_start(json);
 
-    free(payload);
+    json_object_start(json);
+    write_characteristic_json(json, context, ch, 0, &value);
+    json_object_end(json);
 
-    CLIENT_DEBUG(context, "Sending EVENT: %s", event);
+    json_array_end(json);
+    json_object_end(json);
 
-    client_send(context, (byte *)event, event_len);
+    json_flush(json);
+    json_free(json);
 
-    free(event);
+    client_send_chunk(NULL, 0, context);
 }
 
 
@@ -819,18 +805,29 @@ void send_tlv_response(client_context_t *context, tlv_values_t *values) {
 }
 
 
-void send_json_response(client_context_t *context, int status_code, cJSON *root) {
+static byte json_200_response_headers[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: application/hap+json\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n\r\n";
+
+
+static byte json_207_response_headers[] =
+    "HTTP/1.1 207 Multi-Status\r\n"
+    "Content-Type: application/hap+json\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n\r\n";
+
+
+void send_json_response(client_context_t *context, int status_code, byte *payload, size_t payload_size) {
     CLIENT_DEBUG(context, "Sending JSON response");
+    DEBUG_HEAP();
 
     static char *http_headers =
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: application/hap+json\r\n"
         "Content-Length: %d\r\n"
         "Connection: keep-alive\r\n\r\n";
-
-    char *payload = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    size_t payload_size = strlen(payload);
 
     CLIENT_DEBUG(context, "Payload: %s", payload);
 
@@ -849,7 +846,6 @@ void send_json_response(client_context_t *context, int status_code, cJSON *root)
     char *response = malloc(response_size);
     if (!response) {
         CLIENT_ERROR(context, "Failed to allocate response buffer of size %d", response_size);
-        free(payload);
         return;
     }
     int response_len = snprintf(response, response_size, http_headers, status_code, status_text, payload_size);
@@ -857,14 +853,11 @@ void send_json_response(client_context_t *context, int status_code, cJSON *root)
     if (response_size - response_len < payload_size + 1) {
         CLIENT_ERROR(context, "Incorrect response buffer size %d: headers took %d, payload size %d", response_size, response_len, payload_size);
         free(response);
-        free(payload);
         return;
     }
     memcpy(response+response_len, payload, payload_size);
     response_len += payload_size;
     response[response_len] = 0;  // required for debug output
-
-    free(payload);
 
     CLIENT_DEBUG(context, "Sending HTTP response: %s", response);
 
@@ -875,15 +868,16 @@ void send_json_response(client_context_t *context, int status_code, cJSON *root)
 
 
 void send_json_error_response(client_context_t *context, int status_code, HAPStatus status) {
-    cJSON *json = cJSON_CreateObject();
-    cJSON_AddNumberToObject(json, "status", status);
+    byte buffer[32];
+    int size = snprintf((char *)buffer, sizeof(buffer), "{\"status\": %d}", status);
 
-    send_json_response(context, status_code, json);
+    send_json_response(context, status_code, buffer, size);
 }
 
 
 void homekit_server_on_identify(client_context_t *context) {
     CLIENT_INFO(context, "Identify");
+    DEBUG_HEAP();
 
     if (context->server->paired) {
         // Already paired
@@ -918,7 +912,7 @@ void homekit_server_on_identify(client_context_t *context) {
 
 void homekit_server_on_pair_setup(client_context_t *context, const byte *data, size_t size) {
     DEBUG("Pair Setup");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
@@ -928,7 +922,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
     switch(tlv_get_integer_value(message, TLVType_State, -1)) {
         case 1: {
             CLIENT_INFO(context, "Pair Setup Step 1/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             if (context->server->paired) {
                 CLIENT_INFO(context, "Refusing to pair: already paired");
                 send_tlv_error_response(context, 2, TLVError_Unavailable);
@@ -947,7 +941,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             CLIENT_DEBUG(context, "Initializing crypto");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
 
             char password[11];
             if (context->server->config->password) {
@@ -1018,7 +1012,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
         }
         case 3: {
             CLIENT_INFO(context, "Pair Setup Step 2/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             tlv_t *device_public_key = tlv_get_value(message, TLVType_PublicKey);
             if (!device_public_key) {
                 CLIENT_ERROR(context, "Invalid payload: no device public key");
@@ -1034,7 +1028,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             CLIENT_DEBUG(context, "Computing SRP shared secret");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             int r = crypto_srp_compute_key(
                 context->server->pairing_context->srp,
                 device_public_key->value, device_public_key->size,
@@ -1052,7 +1046,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             context->server->pairing_context->public_key_size = 0;
 
             CLIENT_DEBUG(context, "Verifying peer's proof");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             r = crypto_srp_verify(context->server->pairing_context->srp, proof->value, proof->size);
             if (r) {
                 CLIENT_ERROR(context, "Failed to verify peer's proof (code %d)", r);
@@ -1078,7 +1072,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
         }
         case 5: {
             CLIENT_INFO(context, "Pair Setup Step 3/3");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
 
             int r;
 
@@ -1251,6 +1245,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 CLIENT_ERROR(context, "Failed to store pairing (code %d)", r);
 
                 free(device_id);
+                crypto_ed25519_free(device_key);
+                tlv_free(decrypted_message);
                 send_tlv_error_response(context, 6, TLVError_Unknown);
                 break;
             }
@@ -1307,7 +1303,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                    accessory_public_key, accessory_public_key_size);
 
             CLIENT_DEBUG(context, "Generating accessory signature");
-            DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+            DEBUG_HEAP();
             size_t accessory_signature_size = 0;
             crypto_ed25519_sign(
                 context->server->accessory_key,
@@ -1420,7 +1416,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
 void homekit_server_on_pair_verify(client_context_t *context, const byte *data, size_t size) {
     DEBUG("HomeKit Pair Verify");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
@@ -1849,63 +1845,72 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
 void homekit_server_on_get_accessories(client_context_t *context) {
     CLIENT_INFO(context, "Get Accessories");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
-    cJSON *json = cJSON_CreateObject();
-    cJSON *j_accessories = cJSON_CreateArray();
-    cJSON_AddItemToObject(json, "accessories", j_accessories);
+    client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
+
+    json_stream *json = json_new(1024, client_send_chunk, context);
+    json_object_start(json);
+    json_string(json, "accessories"); json_array_start(json);
 
     for (homekit_accessory_t **accessory_it = context->server->config->accessories; *accessory_it; accessory_it++) {
         homekit_accessory_t *accessory = *accessory_it;
 
-        cJSON *j_accessory = cJSON_CreateObject();
-        cJSON_AddItemToArray(j_accessories, j_accessory);
+        json_object_start(json);
 
-        cJSON_AddNumberToObject(j_accessory, "aid", accessory->id);
-        cJSON *j_services = cJSON_CreateArray();
-        cJSON_AddItemToObject(j_accessory, "services", j_services);
+        json_string(json, "aid"); json_integer(json, accessory->id);
+        json_string(json, "services"); json_array_start(json);
 
         for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
             homekit_service_t *service = *service_it;
 
-            cJSON *j_service = cJSON_CreateObject();
-            cJSON_AddItemToArray(j_services, j_service);
+            json_object_start(json);
 
-            cJSON_AddNumberToObject(j_service, "iid", service->id);
-            cJSON_AddStringToObject(j_service, "type", service->type);
-            cJSON_AddBoolToObject(j_service, "hidden", service->hidden);
-            cJSON_AddBoolToObject(j_service, "primary", service->primary);
+            json_string(json, "iid"); json_integer(json, service->id);
+            json_string(json, "type"); json_string(json, service->type);
+            json_string(json, "hidden"); json_boolean(json, service->hidden);
+            json_string(json, "primary"); json_boolean(json, service->primary);
+            // json_string(json, "linked"); json_array_start(json);
             // TODO: linked services
-            // cJSON_AddItemToObject(j_service, "linked", cJSON_CreateArray());
+            // json_array_end(json);
 
-            cJSON *j_characteristics = cJSON_CreateArray();
-            cJSON_AddItemToObject(j_service, "characteristics", j_characteristics);
+            json_string(json, "characteristics"); json_array_start(json);
 
             for (homekit_characteristic_t **ch_it = service->characteristics; *ch_it; ch_it++) {
                 homekit_characteristic_t *ch = *ch_it;
 
-                cJSON_AddItemToArray(
-                    j_characteristics,
-                    characteristic_to_json(
-                        context,
-                        ch,
-                          characteristic_format_type
-                        | characteristic_format_meta
-                        | characteristic_format_perms
-                        | characteristic_format_events,
-                        NULL
-                    )
+                json_object_start(json);
+                write_characteristic_json(
+                    json, context, ch,
+                      characteristic_format_type
+                    | characteristic_format_meta
+                    | characteristic_format_perms
+                    | characteristic_format_events,
+                    NULL
                 );
+                json_object_end(json);
             }
+
+            json_array_end(json);
+            json_object_end(json); // service
         }
+
+        json_array_end(json);
+        json_object_end(json); // accessory
     }
 
-    send_json_response(context, 200, json);
+    json_array_end(json);
+    json_object_end(json); // response
+
+    json_flush(json);
+    json_free(json);
+
+    client_send_chunk(NULL, 0, context);
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     query_param_t *qp = context->endpoint_params;
     while (qp) {
@@ -1941,23 +1946,12 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 
     bool success = true;
 
-    cJSON *json = cJSON_CreateObject();
-    cJSON *characteristics = cJSON_CreateArray();
-    cJSON_AddItemToObject(json, "characteristics", characteristics);
-
-    cJSON *characteristic_error(int aid, int iid, int status) {
-        cJSON *json = cJSON_CreateObject();
-        cJSON_AddNumberToObject(json, "aid", aid);
-        cJSON_AddNumberToObject(json, "iid", iid);
-        cJSON_AddNumberToObject(json, "status", status);
-        return json;
-    }
-
     char *ch_id;
     while ((ch_id = strsep(&id, ","))) {
         char *dot = strstr(ch_id, ".");
         if (!dot) {
             send_json_error_response(context, 400, HAPStatus_InvalidValue);
+            free(id);
             return;
         }
 
@@ -1968,46 +1962,81 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
         if (!ch) {
-            cJSON_AddItemToArray(
-                characteristics,
-                characteristic_error(aid, iid, HAPStatus_NoResource)
-            );
             success = false;
             continue;
         }
 
         if (!(ch->permissions & homekit_permissions_paired_read)) {
-            cJSON_AddItemToArray(
-                characteristics,
-                characteristic_error(aid, iid, HAPStatus_WriteOnly)
-            );
             success = false;
             continue;
         }
-
-        cJSON *ch_json = characteristic_to_json(context, ch, format, NULL);
-        cJSON_AddItemToArray(characteristics, ch_json);
     }
 
-    if (!success) {
-        cJSON *ch_json;
-        cJSON_ArrayForEach(ch_json, characteristics) {
-            if (cJSON_GetObjectItem(ch_json, "status"))
-                continue;
+    free(id);
+    id = strdup(id_param->value);
 
-            cJSON_AddNumberToObject(ch_json, "status", HAPStatus_Success);
+    if (success) {
+        client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
+    } else {
+        client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
+    }
+
+    json_stream *json = json_new(256, client_send_chunk, context);
+    json_object_start(json);
+    json_string(json, "characteristics"); json_array_start(json);
+
+    void write_characteristic_error(json_stream *json, int aid, int iid, int status) {
+        json_object_start(json);
+        json_string(json, "aid"); json_integer(json, aid);
+        json_string(json, "iid"); json_integer(json, iid);
+        json_string(json, "status"); json_integer(json, status);
+        json_object_end(json);
+    }
+
+    while ((ch_id = strsep(&id, ","))) {
+        char *dot = strstr(ch_id, ".");
+        *dot = 0;
+        int aid = atoi(ch_id);
+        int iid = atoi(dot+1);
+
+        CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
+        homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
+        if (!ch) {
+            write_characteristic_error(json, aid, iid, HAPStatus_NoResource);
+            continue;
         }
+
+        if (!(ch->permissions & homekit_permissions_paired_read)) {
+            write_characteristic_error(json, aid, iid, HAPStatus_WriteOnly);
+            continue;
+        }
+
+        json_object_start(json);
+        write_characteristic_json(json, context, ch, format, NULL);
+        if (!success) {
+            json_string(json, "status"); json_integer(json, HAPStatus_Success);
+        }
+        json_object_end(json);
     }
 
-    send_json_response(context, success ? 200 : 207, json);
+    json_array_end(json);
+    json_object_end(json); // response
+
+    json_flush(json);
+    json_free(json);
+
+    client_send_chunk(NULL, 0, context);
+
+    free(id);
 }
 
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
     CLIENT_INFO(context, "Update Characteristics");
+    DEBUG_HEAP();
 
-    char *json_string = strndup((char *)data, size);
-    cJSON *json = cJSON_Parse(json_string);
-    free(json_string);
+    char *data1 = strndup((char *)data, size);
+    cJSON *json = cJSON_Parse(data1);
+    free(data1);
 
     if (!json) {
         CLIENT_ERROR(context, "Failed to parse request JSON");
@@ -2018,11 +2047,13 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
     cJSON *characteristics = cJSON_GetObjectItem(json, "characteristics");
     if (!characteristics) {
         CLIENT_ERROR(context, "Failed to parse request: no \"characteristics\" field");
+        cJSON_Delete(json);
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
     if (characteristics->type != cJSON_Array) {
         CLIENT_ERROR(context, "Failed to parse request: \"characteristics\" field is not an list");
+        cJSON_Delete(json);
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
@@ -2226,9 +2257,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         h_value = HOMEKIT_STRING(value);
                         ch->setter(h_value);
                     } else {
-                        if (ch->value.string_value && !ch->value.is_static) {
-                            free(ch->value.string_value);
-                        }
+                        homekit_value_destruct(&ch->value);
                         h_value = HOMEKIT_STRING(strdup(value));
                         ch->value = h_value;
                     }
@@ -2271,8 +2300,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         return HAPStatus_Success;
     }
 
-    cJSON *result_characteristics = cJSON_CreateArray();
-
+    HAPStatus *statuses = malloc(sizeof(HAPStatus) * cJSON_GetArraySize(characteristics));
     bool has_errors = false;
     for (int i=0; i < cJSON_GetArraySize(characteristics); i++) {
         cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
@@ -2281,37 +2309,47 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         CLIENT_DEBUG(context, "Processing element %s", s);
         free(s);
 
-        HAPStatus status = process_characteristics_update(j_ch);
+        statuses[i] = process_characteristics_update(j_ch);
 
-        if (status != HAPStatus_Success)
+        if (statuses[i] != HAPStatus_Success)
             has_errors = true;
-
-        cJSON *j_status = cJSON_CreateObject();
-        cJSON_AddItemReferenceToObject(j_status, "aid", cJSON_GetObjectItem(j_ch, "aid"));
-        cJSON_AddItemReferenceToObject(j_status, "iid", cJSON_GetObjectItem(j_ch, "iid"));
-        cJSON_AddNumberToObject(j_status, "status", status);
-        cJSON_AddItemToArray(result_characteristics, j_status);
     }
 
-    if (has_errors) {
-        CLIENT_DEBUG(context, "There were processing errors, sending Multi-Status response");
-
-        cJSON *result = cJSON_CreateObject();
-        cJSON_AddItemToObject(result, "characteristics", result_characteristics);
-        send_json_response(context, 207, result);
-    } else {
+    if (!has_errors) {
         CLIENT_DEBUG(context, "There were no processing errors, sending No Content response");
 
-        cJSON_Delete(result_characteristics);
         send_204_response(context);
+    } else {
+        CLIENT_DEBUG(context, "There were processing errors, sending Multi-Status response");
+        client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
+
+        json_stream *json1 = json_new(1024, client_send_chunk, context);
+        json_object_start(json1);
+        json_string(json1, "characteristics"); json_array_start(json1);
+
+        for (int i=0; i < cJSON_GetArraySize(characteristics); i++) {
+            cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
+
+            json_object_start(json1);
+            json_string(json1, "aid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
+            json_string(json1, "iid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
+            json_string(json1, "status"); json_integer(json1, statuses[i]);
+            json_object_end(json1);
+        }
+
+        json_flush(json1);
+        json_free(json1);
+
+        client_send_chunk(NULL, 0, context);
     }
 
+    free(statuses);
     cJSON_Delete(json);
 }
 
 void homekit_server_on_pairings(client_context_t *context, const byte *data, size_t size) {
     DEBUG("HomeKit Pairings");
-    DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+    DEBUG_HEAP();
 
     tlv_values_t *message = tlv_new();
     tlv_parse(data, size, message);
@@ -2577,6 +2615,8 @@ void homekit_server_on_reset(client_context_t *context) {
     homekit_storage_reset();
     send_204_response(context);
 
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+
     sdk_system_restart();
 }
 
@@ -2716,8 +2756,10 @@ static void homekit_client_process(client_context_t *context) {
     }
 
     if (data_len < 0) {
-        if (errno != EAGAIN)
-            CLIENT_ERROR(context, "Error reading data (code %d)", errno);
+        if (errno != EAGAIN) {
+            CLIENT_ERROR(context, "Error reading data from socket (code %d). Disconnecting", errno);
+            context->disconnect = true;
+        }
         return;
     }
 
@@ -2863,7 +2905,6 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             );
             send_characteristic_event(context, event->characteristic, event->value);
 
-            CLIENT_DEBUG(context, "Freeing event");
             homekit_value_destruct(&event->value);
             free(event);
         }
@@ -3105,5 +3146,5 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
-    xTaskCreate(homekit_server_task, "HomeKit Server", 1700, server, 1, NULL);
+    xTaskCreate(homekit_server_task, "HomeKit Server", 2048, server, 1, NULL);
 }

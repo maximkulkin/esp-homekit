@@ -129,7 +129,7 @@
     .valid_values = { \
         .count = 5, \
         .values = (uint8_t[]) { 0, 1, 2, 3, 4 }, \
-    } \
+    }, \
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
