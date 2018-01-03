@@ -2953,15 +2953,27 @@ static void homekit_run_server(homekit_server_t *server)
             }
 
             for (int i=1; i<server->nfds && triggered_nfds; i++) {
-                if (!server->fds[i].revents & POLLIN)
+                if (!server->fds[i].revents)
                     continue;
 
-                client_context_t *context = homekit_server_find_client_by_fd(server, server->fds[i].fd);
-                if (context) {
-                    homekit_client_process(context);
+                triggered_nfds--;
+
+                client_context_t *context = homekit_server_find_client_by_fd(
+                    server, server->fds[i].fd
+                );
+                if (!context) {
+                    // cleanup orphan FD, although should not happen
+                    server->nfds--;
+                    server->fds[i] = server->fds[server->nfds];
+                    i--;
+                    continue;
                 }
 
-                triggered_nfds--;
+                if (server->fds[i].revents & POLLIN) {
+                    homekit_client_process(context);
+                } else if (server->fds[i].revents & (POLLNVAL | POLLERR)) {
+                    context->disconnect = true;
+                }
             }
 
             homekit_server_close_clients(server);
