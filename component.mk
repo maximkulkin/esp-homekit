@@ -24,6 +24,8 @@ $(eval $(call component_compile_rules,homekit))
 EXTRA_WOLFSSL_CFLAGS = \
 	-DWOLFCRYPT_HAVE_SRP \
 	-DWOLFSSL_SHA512 \
+	-DNO_MD5 \
+	-DNO_SHA \
 	-DHAVE_HKDF \
 	-DHAVE_CHACHA \
 	-DHAVE_POLY1305 \
