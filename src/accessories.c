@@ -241,7 +241,7 @@ void homekit_characteristic_remove_notify_callback(
             break;
         }
 
-        homekit_characteristic_change_callback_t *c = ch->callback->next;
+        homekit_characteristic_change_callback_t *c = ch->callback;
         ch->callback = ch->callback->next;
         free(c);
     }
@@ -262,6 +262,7 @@ void homekit_characteristic_remove_notify_callback(
 }
 
 
+// Removes particular callback from all characteristics
 void homekit_accessories_clear_notify_callbacks(
     homekit_accessory_t **accessories,
     homekit_characteristic_change_callback_fn function,
