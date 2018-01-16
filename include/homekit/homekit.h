@@ -21,4 +21,7 @@ typedef struct {
 // Initialize HomeKit accessory server
 void homekit_server_init(homekit_server_config_t *config);
 
+// Reset HomeKit accessory server, removing all pairings
+void homekit_server_reset();
+
 #endif // __HOMEKIT_H__

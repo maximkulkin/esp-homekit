@@ -2612,7 +2612,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 void homekit_server_on_reset(client_context_t *context) {
     INFO("Reset");
 
-    homekit_storage_reset();
+    homekit_server_reset();
     send_204_response(context);
 
     vTaskDelay(3000 / portTICK_PERIOD_MS);
@@ -3159,4 +3159,8 @@ void homekit_server_init(homekit_server_config_t *config) {
     server->config = config;
 
     xTaskCreate(homekit_server_task, "HomeKit Server", 2048, server, 1, NULL);
+}
+
+void homekit_server_reset() {
+    homekit_storage_reset();
 }
