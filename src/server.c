@@ -2860,10 +2860,8 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     INFO("Got new client connection: %d", s);
 
-    const struct timeval sndtimeout = { 10, 0 }; /* 10 second timeout */
-    const struct timeval rcvtimeout = { 1, 0 }; /* 1 second timeout */
+    const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
-    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &sndtimeout, sizeof(sndtimeout));
 
     client_context_t *context = client_context_new();
     context->server = server;
