@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "tlv.h"
+#include <stdio.h>
 
 
 tlv_values_t *tlv_new() {

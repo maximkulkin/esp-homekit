@@ -204,7 +204,7 @@ void json_integer(json_stream *json, long long x) {
         return;
 
     void _do_write() {
-        json_write(json, "%ld", x);
+        json_write(json, "%lld", x);
     }
 
     switch (json->state) {

@@ -11,12 +11,178 @@
  * by M J A Hamel 2016
  */
 
+#include "mdnsresponder.h"
 
-#include <espressif/esp_common.h>
-#include <espressif/esp_wifi.h>
+#ifdef __unix__
 
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
+
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+
+#define IP_IS_V6_VAL(addr) 0
+#define udp_bind_netif(val, lol)
+
+#define ip_addr_t int32_t
+
+struct pbuf {
+  char* payload;
+  int tot_len;
+};
+
+struct udp_pcb {
+  int socket;
+};
+
+#define PBUF_RAM 1
+#define PBUF_TRANSPORT 1
+#define err_t int
+#define ERR_OK 0
+#define netif_ip4_addr(x) x
+
+#define STATION_IF 0
+struct netif {
+  ip_addr_t addr;
+};
+
+struct netif* sdk_system_get_netif(int val) {
+  int fd;
+  struct ifreq ifr;
+
+  fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+  /* I want to get an IPv4 IP address */
+  ifr.ifr_addr.sa_family = AF_INET;
+
+  printf("getting public ip from %s\n", MDNS_RESPONDER_INTERFACE);
+
+  /* I want IP address attached to "eth0" */
+  strncpy(ifr.ifr_name, MDNS_RESPONDER_INTERFACE, IFNAMSIZ-1);
+
+  ioctl(fd, SIOCGIFADDR, &ifr);
+
+  close(fd);
+
+  struct netif* ret = malloc(sizeof(struct netif));
+  ret->addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr;
+
+  return ret;
+}
+
+struct netif* ip_current_input_netif() {
+  return sdk_system_get_netif(0);
+}
+
+struct pbuf *pbuf_alloc(int trans, int bytes, int where) {
+  struct pbuf* buf = (struct pbuf*)malloc(sizeof(struct pbuf));
+
+  buf->payload = malloc(bytes);
+  buf->tot_len = bytes;
+
+  return buf;
+}
+
+int pbuf_copy_partial(struct pbuf* p, char* mdns_payload, int plen, int lol) {
+  memcpy(mdns_payload, p->payload, plen);
+
+  return plen;
+}
+
+void pbuf_free(struct pbuf* buf) {
+  free(buf->payload);
+  free(buf);
+}
+
+err_t udp_sendto(struct udp_pcb* udp, struct pbuf* buf, const ip_addr_t* addr, int port) {
+  struct sockaddr_in ip4addr;
+  ip4addr.sin_family = AF_INET;
+  ip4addr.sin_addr.s_addr = htonl(*addr);
+  ip4addr.sin_port = htons(port);
+
+  sendto(udp->socket, buf->payload, buf->tot_len, 0, (struct sockaddr*)&ip4addr, sizeof(ip4addr));
+
+  return ERR_OK;
+}
+
+struct udp_pcb* udp_new_ip_type(int type) {
+  struct udp_pcb* sock = malloc(sizeof(struct udp_pcb));
+  sock->socket = socket (AF_INET, SOCK_DGRAM, 0);
+
+  return sock;
+}
+
+#define IPADDR_TYPE_ANY INADDR_ANY
+#define IP_ANY_TYPE INADDR_ANY
+int udp_bind(struct udp_pcb* udp, in_addr_t addr, u16_t port) {
+  int reuse = 1, ret = 0;
+  if (setsockopt(udp->socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+    perror("setsockopt(SO_REUSEADDR) failed");
+
+  struct sockaddr_in cliAddr;
+  cliAddr.sin_family = AF_INET;
+  cliAddr.sin_addr.s_addr = htonl(addr);
+  cliAddr.sin_port = htons(port);
+  ret = bind(udp->socket, (struct sockaddr *) &cliAddr, sizeof (cliAddr));
+  if (ret < 0) {
+    return ret;
+  }
+
+  struct netif* netif = sdk_system_get_netif(0);
+
+  struct ip_mreq ipMreq;
+  ipMreq.imr_multiaddr.s_addr = inet_addr("224.0.0.251");//multicast group
+  ipMreq.imr_interface.s_addr = netif->addr;//interface name
+
+  if (setsockopt(udp->socket, IPPROTO_IP, IP_ADD_MEMBERSHIP, &ipMreq, sizeof(ipMreq))) {
+    perror("IGMP");
+  }
+
+  free(netif);
+
+  return 0;
+}
+
+#define DNS_MQUERY_IPV4_GROUP_INIT inet_network("224.0.0.251")
+
+#define PACK_STRUCT_BEGIN
+#define PACK_STRUCT_STRUCT __attribute__ ((__packed__))
+#define PACK_STRUCT_END
+#define PACK_STRUCT_FIELD(x) x
+
+#define SemaphoreHandle_t pthread_mutex_t*
+#define portMAX_DELAY 0
+#define DNS_RRTYPE_PTR 12
+#define DNS_RRTYPE_TXT 16
+#define DNS_RRTYPE_A 1
+#define DNS_RRCLASS_IN 1
+#define LWIP_IANA_PORT_MDNS 5353
+
+int xSemaphoreTake(pthread_mutex_t* sem, uint32_t delay) {
+    usleep(delay);
+    pthread_mutex_lock(sem);
+    return 1;
+}
+
+void xSemaphoreGive(pthread_mutex_t* sem) {
+  pthread_mutex_unlock(sem);
+}
+
+pthread_mutex_t* xSemaphoreCreateBinary() {
+  pthread_mutex_t* mutex = malloc(sizeof(pthread_mutex_t));
+  pthread_mutex_init (mutex, NULL);
+  return mutex;
+}
+
+#else
+#include <espressif/esp_common.h>
+#include <espressif/esp_wifi.h>
 
 #include <FreeRTOS.h>
 #include <task.h>
@@ -33,11 +199,14 @@
 #include <lwip/igmp.h>
 #include <lwip/netif.h>
 
-#include "mdnsresponder.h"
-
 #if !LWIP_IGMP
 #error "LWIP_IGMP needs to be defined in lwipopts.h"
 #endif
+#endif //#ifdef __unix__
+
+#include <string.h>
+#include <stdio.h>
+
 
 // #define qDebugLog             // Log activity generally
 // #define qLogIncoming          // Log all arriving multicast packets
@@ -121,7 +290,11 @@ typedef struct mdns_rsrc {
 } mdns_rsrc;
 
 static struct udp_pcb* gMDNS_pcb = NULL;
+#ifdef __unix__
+static ip_addr_t gMulticastV4Addr;
+#else
 static const ip_addr_t gMulticastV4Addr = DNS_MQUERY_IPV4_GROUP_INIT;
+#endif
 #if LWIP_IPV6
 #include "lwip/mld6.h"
 static const ip_addr_t gMulticastV6Addr = DNS_MQUERY_IPV6_GROUP_INIT;
@@ -674,9 +847,7 @@ static void mdns_send_mcast(const ip_addr_t *addr, u8_t* msgP, int nBytes)
         }
         err = udp_sendto(gMDNS_pcb, p, dest_addr, LWIP_IANA_PORT_MDNS);
         if (err == ERR_OK) {
-#ifdef qDebugLog
             printf(" - responded with %d bytes err %d\n", nBytes, err);
-#endif
         } else
             printf(">>> mdns_send failed %d\n", err);
         pbuf_free(p);
@@ -754,12 +925,17 @@ static void mdns_reply(const ip_addr_t *addr, struct mdns_hdr* hdrP)
 
                     if (rsrcP->rType == DNS_RRTYPE_A) {
                         struct netif *netif = ip_current_input_netif();
+
 #ifdef qDebugLog
                         char addr4_str[IP4ADDR_STRLEN_MAX];
                         ip4addr_ntoa_r(netif_ip4_addr(netif), addr4_str, IP4ADDR_STRLEN_MAX);
                         printf("Updating A record for '%s' to %s\n", rsrcP->rData, addr4_str);
 #endif
+
                         memcpy(&rsrcP->rData[rsrcP->rKeySize], netif_ip4_addr(netif), sizeof(ip4_addr_t));
+                        #ifdef __unix__
+                        free(netif);
+                        #endif
                     }
 
                     size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
@@ -810,6 +986,9 @@ static void mdns_reply(const ip_addr_t *addr, struct mdns_hdr* hdrP)
 // Announce all configured services
 static void mdns_announce(struct netif *netif, const ip_addr_t *addr)
 {
+
+    printf("mdns_announce\n");
+
     u8_t *mdns_response = malloc(MDNS_RESPONDER_REPLY_SIZE);
     if (mdns_response == NULL) {
         printf(">>> mdns_reply could not alloc %d\n", MDNS_RESPONDER_REPLY_SIZE);
@@ -910,8 +1089,9 @@ static void mdns_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_a
 #endif
 
                 if ( (hdrP->flags1 & (DNS_FLAG1_RESP + DNS_FLAG1_OPMASK + DNS_FLAG1_TRUNC) ) == 0
-                     && hdrP->numquestions > 0 )
+                     && hdrP->numquestions > 0 ) {
                     mdns_reply(addr, hdrP);
+                }
             }
             free(mdns_payload);
         }
@@ -919,9 +1099,30 @@ static void mdns_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_a
     pbuf_free(p);
 }
 
+#define BUFLEN 512
+void* recv_thread(void* data) {
+  struct udp_pcb* sock = data;
+  struct sockaddr_in si_me, si_other;
+
+  int s, i, slen = sizeof(si_other) , recv_len;
+  char buf[BUFLEN];
+  while(1) {
+    if ((recv_len = recvfrom(sock->socket, buf, BUFLEN, 0, (struct sockaddr *) &si_other, &slen)) == -1)
+      {
+      }
+
+    struct pbuf* p = pbuf_alloc(0, recv_len, 0);
+    memcpy(p->payload, buf, recv_len);
+    mdns_recv(NULL, sock, p, &si_other.sin_addr.s_addr, ntohl(si_other.sin_port));
+  };
+
+  return NULL;
+}
+
 // If we are in station mode and have an IP address, start a multicast UDP receive
 void mdns_init()
 {
+    gMulticastV4Addr = DNS_MQUERY_IPV4_GROUP_INIT;
     err_t err;
 
     struct netif *netif = sdk_system_get_netif(STATION_IF);
@@ -930,6 +1131,7 @@ void mdns_init()
         return;
     }
 
+#ifndef __unix__
     // Start IGMP on the netif for our interface: this isn't done for us
     if (!(netif->flags & NETIF_FLAG_IGMP)) {
         netif->flags |= NETIF_FLAG_IGMP;
@@ -939,6 +1141,7 @@ void mdns_init()
             return;
         }
     }
+#endif
 
     gDictMutex = xSemaphoreCreateBinary();
     if (!gDictMutex) {
@@ -953,10 +1156,12 @@ void mdns_init()
         return;
     }
 
+#ifndef __unix__
     if ((err = igmp_joingroup_netif(netif, ip_2_ip4(&gMulticastV4Addr))) != ERR_OK) {
         printf(">>> mDNS_init: igmp_join failed %d\n",err);
         return;
     }
+#endif
 
 #if LWIP_IPV6
     if ((err = mld6_joingroup_netif(netif, ip_2_ip6(&gMulticastV6Addr))) != ERR_OK) {
@@ -966,11 +1171,18 @@ void mdns_init()
 #endif
 
     if ((err = udp_bind(gMDNS_pcb, IP_ANY_TYPE, LWIP_IANA_PORT_MDNS)) != ERR_OK) {
+      perror("bind");
         printf(">>> mDNS_init: udp_bind failed %d\n",err);
         return;
     }
 
     udp_bind_netif(gMDNS_pcb, netif);
 
+    #ifdef __unix__
+    pthread_t inc_x_thread;
+    pthread_create(&inc_x_thread, NULL, recv_thread, gMDNS_pcb);
+    #else
     udp_recv(gMDNS_pcb, mdns_recv, NULL);
+    #endif
 }
+

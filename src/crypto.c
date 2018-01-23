@@ -10,8 +10,14 @@
 #include <wolfssl/wolfcrypt/srp.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
 
+#ifdef __unix__
+#include <time.h>
+#include <stdlib.h>
+#else
 #include <esp/hwrand.h>
+#endif
 
+#define HOMEKIT_DEBUG
 #include "debug.h"
 
 
@@ -50,6 +56,7 @@ const byte N[] = {
   0x43, 0xdb, 0x5b, 0xfc, 0xe0, 0xfd, 0x10, 0x8e, 0x4b, 0x82, 0xd1, 0x20,
   0xa9, 0x3a, 0xd2, 0xca, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
+
 
 // 3072-bit group generator (per RFC5054, Appendix A)
 const byte g[] = {0x05};
@@ -100,7 +107,14 @@ void crypto_srp_free(Srp *srp) {
 int crypto_srp_init(Srp *srp, const char *username, const char *password) {
     DEBUG("Generating salt");
     byte salt[16];
+#ifdef __unix__
+    srand(time(NULL));
+    for (int i=0;i<16;i++) {
+        salt[i] = rand();
+    }
+#else
     hwrand_fill(salt, sizeof(salt));
+#endif
 
     int r;
     DEBUG("Setting SRP username");
@@ -331,8 +345,12 @@ int crypto_chacha20poly1305_encrypt(
 
 ed25519_key *crypto_ed25519_new() {
     ed25519_key *key = malloc(sizeof(ed25519_key));
+    if (key == NULL) {
+        DEBUG("malloc failed");
+    }
     int r = wc_ed25519_init(key);
     if (r) {
+        DEBUG("wc_ed25519_init failed");
         free(key);
         return NULL;
     }
@@ -347,12 +365,22 @@ void crypto_ed25519_free(ed25519_key *key) {
 ed25519_key *crypto_ed25519_generate() {
     ed25519_key *key = crypto_ed25519_new();
 
+    if (key == NULL) {
+        DEBUG("Failed to crypto_ed25519_new");
+    }
+
     WC_RNG rng;
+    wc_InitRng(&rng);
+
     int r = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, key);
     if (r) {
         DEBUG("Failed to generate key (code %d)", r);
         crypto_ed25519_free(key);
         return NULL;
+    }
+
+    if (key == NULL) {
+        DEBUG("wc_ed25519_make_key made null key");
     }
 
     return key;
@@ -469,6 +497,7 @@ curve25519_key *crypto_curve25519_generate() {
         return NULL;
 
     WC_RNG rng;
+    wc_InitRng(&rng);
     int r = wc_curve25519_make_key(&rng, 32, key);
     if (r) {
         crypto_curve25519_free(key);

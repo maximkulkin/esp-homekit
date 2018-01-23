@@ -4,15 +4,39 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
+
+#ifdef __unix__
+#include <time.h>
+#include <stdlib.h>
+#include <sys/select.h>
+#include <poll.h>
+#include <stdio.h>
+#define lwip_write write
+#define lwip_read  read
+#define lwip_close close
+#include "queue.h"
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+
+#define hwrand rand
+void hwrand_fill(char *buf, int size) {
+    for (int i = 0; i < size; i++) {
+        buf[i] = rand();
+    }
+}
+
+#else
 #include <esp/hwrand.h>
 #include <espressif/esp_common.h>
-
 #include <lwip/sockets.h>
-
-#include <unistd.h>
 #include <FreeRTOS.h>
 #include <task.h>
 #include <queue.h>
+#endif
+
+#include <unistd.h>
 
 #include "mdnsresponder.h"
 #include <http-parser/http_parser.h>
@@ -24,6 +48,7 @@
 #include "storage.h"
 #include "query_params.h"
 #include "json.h"
+#define HOMEKIT_DEBUG 1
 #include "debug.h"
 
 #include "homekit/homekit.h"
@@ -735,7 +760,7 @@ void send_characteristic_event(client_context_t *context, const homekit_characte
 
     client_send(context, http_headers, sizeof(http_headers)-1);
 
-    json_stream *json = json_new(256, client_send_chunk, context);
+    json_stream *json = json_new(512, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
@@ -1852,7 +1877,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
     client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
 
-    json_stream *json = json_new(1024, client_send_chunk, context);
+    json_stream *json = json_new(2048, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "accessories"); json_array_start(json);
 
@@ -2618,9 +2643,13 @@ void homekit_server_on_reset(client_context_t *context) {
     homekit_server_reset();
     send_204_response(context);
 
+#ifdef __unix__
+    abort();
+#else
     vTaskDelay(3000 / portTICK_PERIOD_MS);
 
     sdk_system_restart();
+#endif
 }
 
 
@@ -2900,7 +2929,7 @@ void homekit_server_process_notifications(homekit_server_t *server) {
         while (xQueueReceive(context->event_queue, &event, 0)) {
             CLIENT_DEBUG(
                 context,
-                "Received event for %d.%d",
+                "Received event for %d",
                 event->characteristic->service->accessory->id,
                 event->characteristic->id
             );
@@ -2938,6 +2967,11 @@ static void homekit_run_server(homekit_server_t *server)
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(PORT);
+
+    int reuse = 1, ret = 0;
+    if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+        perror("setsockopt(SO_REUSEADDR) failed");
+
     bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
     listen(listenfd, 10);
 
@@ -2949,11 +2983,13 @@ static void homekit_run_server(homekit_server_t *server)
         int triggered_nfds = poll(server->fds, server->nfds, 1000);
         if (triggered_nfds) {
             if (server->fds[0].revents & POLLIN) {
+                DEBUG("new con");
                 homekit_server_accept_client(server);
                 triggered_nfds--;
             }
 
             for (int i=1; i<server->nfds && triggered_nfds; i++) {
+                DEBUG("client read");
                 if (!server->fds[i].revents)
                     continue;
 
@@ -3065,7 +3101,7 @@ char *homekit_accessory_id_generate() {
 ed25519_key *homekit_accessory_key_generate() {
     ed25519_key *key = crypto_ed25519_generate();
     if (!key) {
-        ERROR("Failed to generate accessory key");
+        ERROR("Failed to generate accessory key %x", key);
         return NULL;
     }
 
@@ -3110,6 +3146,8 @@ void homekit_server_task(void *args) {
         server->paired = true;
     }
 
+#ifdef __unix__
+#else
     if (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
         INFO("Waiting for IP");
         while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
@@ -3118,13 +3156,17 @@ void homekit_server_task(void *args) {
 
         INFO("Got IP, starting");
     }
+#endif
 
     mdns_init();
     homekit_setup_mdns(server);
 
     homekit_run_server(server);
 
+#ifdef __unix__
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 #define ISDIGIT(x) isdigit((unsigned char)(x))
@@ -3159,7 +3201,11 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
+#ifdef __unix__
+    homekit_server_task(server);
+#else
     xTaskCreate(homekit_server_task, "HomeKit Server", 2048, server, 1, NULL);
+#endif
 }
 
 void homekit_server_reset() {

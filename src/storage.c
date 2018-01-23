@@ -1,6 +1,6 @@
 #include <string.h>
 #include <ctype.h>
-#include <spiflash.h>
+#define HOMEKIT_DEBUG
 #include "debug.h"
 #include "crypto.h"
 #include "pairing.h"
@@ -26,6 +26,40 @@
 
 const char magic1[] = "HAP";
 
+#ifdef __unix__
+#define SPI_FLASH_SECTOR_SIZE 1024
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <sys/mman.h>
+static int storage_fd = 0;
+static void *storage = 0;
+
+#define NUMSECS 32
+
+bool spiflash_write(unsigned int addr, void *src, unsigned int size) {
+    addr -= SPIFLASH_BASE_ADDR;
+    memcpy(storage + addr, src, size);
+
+    if (lseek(storage_fd, addr, SEEK_SET) < 0) {
+        perror("seek");
+        abort();
+    }
+    if (write(storage_fd, src, size) != size) {
+        perror("write");
+        abort();
+    }
+
+    return true;
+}
+bool spiflash_read(unsigned int addr, void *dst, unsigned int size) {
+    addr -= SPIFLASH_BASE_ADDR;
+    memcpy(dst, storage + addr, size);
+    return true;
+}
+#endif
+
 
 int homekit_storage_reset() {
     byte blank[sizeof(magic1)];
@@ -39,6 +73,24 @@ int homekit_storage_reset() {
 
 
 int homekit_storage_init() {
+#ifdef __unix__
+    printf("homekit_storage_init\n");
+    storage_fd = open("/etc/homekit", O_RDWR | O_CREAT, S_IRUSR|S_IWUSR);
+    if (storage_fd < 1) {
+        ERROR("open failed");
+        abort();
+    }
+    if (ftruncate(storage_fd, SPI_FLASH_SECTOR_SIZE * NUMSECS)) {
+        ERROR("truncate failed");
+        abort();
+    }
+    storage  = mmap(0, SPI_FLASH_SECTOR_SIZE * NUMSECS, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE, storage_fd, 0);
+    if (!storage) {
+        ERROR("mmap failed");
+        abort();
+    }
+#else
     char magic[sizeof(magic1)];
     memset(magic, 0, sizeof(magic));
 
@@ -61,7 +113,7 @@ int homekit_storage_init() {
 
         return 1;
     }
-
+#endif
     return 0;
 }
 
@@ -203,7 +255,11 @@ static int find_empty_block() {
 
         bool block_empty = true;
         for (int j=0; j<sizeof(data); j++)
+#ifdef __unix__
+            if (data[j] != 0x00) {
+#else
             if (data[j] != 0xff) {
+#endif
                 block_empty = false;
                 break;
             }

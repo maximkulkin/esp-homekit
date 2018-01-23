@@ -1,0 +1,9 @@
+[submodule "cJSON"]
+	path = cJSON
+	url = https://github.com/DaveGamble/cJSON.git
+[submodule "http-parser"]
+	path = http-parser
+	url = https://github.com/nodejs/http-parser.git
+[submodule "wolfssl"]
+	path = wolfssl
+	url = https://github.com/wolfSSL/wolfssl.git

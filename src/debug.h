@@ -19,7 +19,8 @@ typedef unsigned char byte;
 #define INFO(message, ...) printf(">>> HomeKit: " message "\n", ##__VA_ARGS__)
 #define ERROR(message, ...) printf("!!! HomeKit: " message "\n", ##__VA_ARGS__)
 
-#define DEBUG_HEAP() DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+//#define DEBUG_HEAP() DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+#define DEBUG_HEAP()
 
 char *binary_to_string(const byte *data, size_t size);
 void print_binary(const char *prompt, const byte *data, size_t size);
