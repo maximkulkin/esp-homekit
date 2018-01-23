@@ -13,6 +13,9 @@ endif
 
 # Base flash address where persisted information (e.g. pairings) will be stored
 HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
+# Maximum number of simultaneous clients allowed.
+# Each connected client requires ~1100-1200 bytes of RAM.
+HOMEKIT_MAX_CLIENTS ?= 8
 
 INC_DIRS += $(homekit_ROOT)/include
 
@@ -34,7 +37,8 @@ EXTRA_WOLFSSL_CFLAGS = \
 
 wolfssl_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS)
 homekit_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS) \
-	-DSPIFLASH_BASE_ADDR=$(HOMEKIT_SPI_FLASH_BASE_ADDR)
+	-DSPIFLASH_BASE_ADDR=$(HOMEKIT_SPI_FLASH_BASE_ADDR) \
+	-DHOMEKIT_MAX_CLIENTS=$(HOMEKIT_MAX_CLIENTS)
 
 ifeq ($(HOMEKIT_DEBUG),1)
 homekit_CFLAGS += -DHOMEKIT_DEBUG

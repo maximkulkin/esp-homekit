@@ -31,7 +31,10 @@
 
 
 #define PORT 5556
+
+#ifndef HOMEKIT_MAX_CLIENTS
 #define HOMEKIT_MAX_CLIENTS 8
+#endif
 
 
 struct _client_context_t;
@@ -2853,7 +2856,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
         return NULL;
 
     if (server->nfds > HOMEKIT_MAX_CLIENTS) {
-        INFO("No more room for client connections");
+        INFO("No more room for client connections (max %d)", HOMEKIT_MAX_CLIENTS);
         lwip_close(s);
         return NULL;
     }
