@@ -33,7 +33,7 @@
 #define PORT 5556
 
 #ifndef HOMEKIT_MAX_CLIENTS
-#define HOMEKIT_MAX_CLIENTS 8
+#define HOMEKIT_MAX_CLIENTS 16
 #endif
 
 

@@ -15,7 +15,7 @@ endif
 HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
 # Maximum number of simultaneous clients allowed.
 # Each connected client requires ~1100-1200 bytes of RAM.
-HOMEKIT_MAX_CLIENTS ?= 8
+HOMEKIT_MAX_CLIENTS ?= 16
 
 INC_DIRS += $(homekit_ROOT)/include
 
