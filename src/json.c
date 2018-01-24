@@ -72,12 +72,18 @@ void json_flush(json_stream *json) {
 
 void json_write(json_stream *json, const char *format, ...) {
     va_list arg_ptr;
-    va_start(arg_ptr, format);
 
+    va_start(arg_ptr, format);
     int len = vsnprintf((char *)json->buffer + json->pos, json->size - json->pos, format, arg_ptr);
+    va_end(arg_ptr);
+
     if (len + json->pos > json->size - 1) {
         json_flush(json);
+
+        va_start(arg_ptr, format);
         int len = vsnprintf((char *)json->buffer + json->pos, json->size - json->pos, format, arg_ptr);
+        va_end(arg_ptr);
+
         if (len > json->size - 1) {
             ERROR("Write value too large");
             DEBUG("Format = %s", format);
@@ -87,8 +93,6 @@ void json_write(json_stream *json, const char *format, ...) {
     } else {
         json->pos += len;
     }
-
-    va_end(arg_ptr);
 }
 
 void json_object_start(json_stream *json) {
