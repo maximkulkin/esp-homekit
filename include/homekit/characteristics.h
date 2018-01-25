@@ -903,10 +903,10 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM HOMEKIT_APPLE_UUID2("8E")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_SECURITY_SYSTEM_ALARM(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM, \
-    .description = "Security System Alarm", \
+#define HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE HOMEKIT_APPLE_UUID2("8E")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE, \
+    .description = "Security System Alarm Type", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
@@ -1237,7 +1237,7 @@
 #define HOMEKIT_CHARACTERISTIC_SLAT_TYPE HOMEKIT_APPLE_UUID2("C0")
 #define HOMEKIT_DECLARE_CHARACTERISTIC_SLAT_TYPE(_value, ...) \
     .type = HOMEKIT_CHARACTERISTIC_SLAT_TYPE, \
-    .description = "Slat", \
+    .description = "Slat Type", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read, \
     .min_value = (float[]) {0}, \
