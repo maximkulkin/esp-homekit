@@ -1216,9 +1216,9 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_SLAT HOMEKIT_APPLE_UUID2("C0")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_SLAT(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_SLAT, \
+#define HOMEKIT_CHARACTERISTIC_SLAT_TYPE HOMEKIT_APPLE_UUID2("C0")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_SLAT_TYPE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_SLAT_TYPE, \
     .description = "Slat", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read, \
