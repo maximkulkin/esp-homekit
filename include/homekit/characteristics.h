@@ -933,6 +933,23 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
+#define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED HOMEKIT_APPLE_UUID2("69")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED, \
+    .description = "Carbon Monoxide Detected", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {1}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 2, \
+        .values = (uint8_t[]) { 0, 1 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
 #define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_LEVEL HOMEKIT_APPLE_UUID2("90")
 #define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_MONOXIDE_LEVEL(_value, ...) \
     .type = HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_LEVEL, \
@@ -957,10 +974,11 @@
     .value = HOMEKIT_FLOAT_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED HOMEKIT_APPLE_UUID2("69")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED, \
-    .description = "Carbon Monoxide Detected", \
+
+#define HOMEKIT_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED HOMEKIT_APPLE_UUID2("92")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED, \
+    .description = "Carbon Dioxide Detected", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
