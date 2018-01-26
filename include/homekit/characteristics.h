@@ -3,6 +3,7 @@
 
 #include <homekit/types.h>
 
+// MARK: - Apple UUID
 
 #ifdef HOMEKIT_SHORT_APPLE_UUIDS
     #define HOMEKIT_APPLE_UUID8(value) (value)
@@ -26,47 +27,584 @@
     #define HOMEKIT_APPLE_UUID0(value) HOMEKIT_APPLE_UUID1("0" value)
 #endif
 
+// MARK: - Services
 
+/**
+ Defines information about a certain accessory, including a action to identify the accessory.
+ 
+ Required Characteristics:
+ - IDENTIFY
+ - MANUFACTURER
+ - MODEL
+ - NAME
+ - SERIAL_NUMBER
+ - FIRMWARE_REVISION
+ 
+ Optional Characteristics:
+ - HARDWARE_REVISION
+ - ACCESSORY_FLAGS
+ */
 #define HOMEKIT_SERVICE_ACCESSORY_INFORMATION HOMEKIT_APPLE_UUID2("3E")
+
+/**
+ Defines that the accessory constains a fan. For more features see FAN2.
+ 
+ Required Characteristics:
+ - ON
+ 
+ Optional Characteristics:
+ - NAME
+ - ROTATION_DIRECTION
+ - ROTATION_SPEED
+ */
 #define HOMEKIT_SERVICE_FAN HOMEKIT_APPLE_UUID2("40")
+
+/**
+ Defines that the accessory has control over the opening of a garage door.
+
+ Required Characteristics:
+ - CURRENT_DOOR_STATE
+ - TARGET_DOOR_STATE
+ - OBSTRUCTION_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - LOCK_CURRENT_STATE
+ - LOCK_TARGET_STATE
+ */
 #define HOMEKIT_SERVICE_GARAGE_DOOR_OPENER HOMEKIT_APPLE_UUID2("41")
+
+/**
+ Defines that the accessory contains a lightbulb.
+
+ Required Characteristics:
+ - ON
+ 
+ Optional Characteristics:
+ - NAME
+ - BRIGHTNESS
+ - HUE
+ - SATURATION
+ - COLOR_TEMPERATURE
+ */
 #define HOMEKIT_SERVICE_LIGHTBULB HOMEKIT_APPLE_UUID2("43")
+
+/**
+ Defines a number of additional settings, rules and information on a lock mechanism inside of a accessory.
+ 
+ Required Characteristics:
+ - LOCK_CONTROL_POINT
+ - VERSION
+ 
+ Optional Characteristics:
+ - NAME
+ - LOGS
+ - AUDIO_FEEDBACK
+ - LOCK_MANAGEMENT_AUTO_SECURITY_TIMEOUT
+ - ADMINISTRATOR_ONLY_ACCESS
+ - LOCK_LAST_KNOWN_ACTION
+ - CURRENT_DOOR_STATE
+ - MOTION_DETECTED
+ */
 #define HOMEKIT_SERVICE_LOCK_MANAGEMENT HOMEKIT_APPLE_UUID2("44")
+
+/**
+ Defines that the accessory constains a lock mechanism. This can be combined with Lock Management.
+ 
+ Required Characteristics:
+ - LOCK_CURRENT_STATE
+ - LOCK_TARGET_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ */
 #define HOMEKIT_SERVICE_LOCK_MECHANISM HOMEKIT_APPLE_UUID2("45")
+
+/**
+ Defines that the accessory contains an outlet/socket.
+ 
+ Required Characteristics:
+ - ON
+ - OUTLET_IN_USE
+ 
+ Optional Characteristics:
+ - NAME
+ */
 #define HOMEKIT_SERVICE_OUTLET HOMEKIT_APPLE_UUID2("47")
+
+/**
+ Defines that the accessory contains a switch.
+ 
+ Required Characteristics:
+ - ON
+ 
+ Optional Characteristics:
+ - NAME
+ */
 #define HOMEKIT_SERVICE_SWITCH HOMEKIT_APPLE_UUID2("49")
+
+/**
+ Defines that the accessory contains a thermostat.
+
+ Required Characteristics:
+ - CURRENT_HEATING_COOLING_STATE
+ - TARGET_HEATING_COOLING_STATE
+ - CURRENT_TEMPERATURE
+ - TARGET_TEMPERATURE
+ - TEMPERATURE_DISPLAY_UNITS
+ 
+ Optional Characteristics:
+ - NAME
+ - CURRENT_RELATIVE_HUMIDITY
+ - TARGET_RELATIVE_HUMIDITY
+ - COOLING_THRESHOLD_TEMPERATURE
+ - HEATING_THRESHOLD_TEMPERATURE
+ */
 #define HOMEKIT_SERVICE_THERMOSTAT HOMEKIT_APPLE_UUID2("4A")
+
+/**
+ Defines that the accessory contains a air quality sensor.
+
+ Required Characteristics:
+ - AIR_QUALITY
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_TAMPERED
+ - STATUS_LOW_BATTERY
+ - OZONE_DENSITY
+ - NITROGEN_DIOXIDE_DENSITY
+ - SULPHUR_DIOXIDE_DENSITY
+ - PM25_DENSITY
+ - PM10_DENSITY
+ - VOC_DENSITY
+ - CARBON_MONOXIDE_LEVEL
+ - CARBON_DIOXIDE_LEVEL
+ */
 #define HOMEKIT_SERVICE_AIR_QUALITY_SENSOR HOMEKIT_APPLE_UUID2("8D")
+
+/**
+ Defines that the accessory contains a security system.
+ 
+ Required Characteristics:
+ - SECURITY_SYSTEM_CURRENT_STATE
+ - SECURITY_SYSTEM_TARGET_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_FAULT
+ - STATUS_TAMPERED
+ - SECURITY_SYSTEM_ALARM_TYPE
+ */
 #define HOMEKIT_SERVICE_SECURITY_SYSTEM HOMEKIT_APPLE_UUID2("7E")
+
+/**
+ Defines that the accessory contains a monoxide dioxide (CO) sensor.
+ 
+ Required Characteristics:
+ - CARBON_MONOXIDE_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ - CARBON_MONOXIDE_LEVEL
+ - CARBON_MONOXIDE_PEAK_LEVEL
+ */
 #define HOMEKIT_SERVICE_CARBON_MONOXIDE_SENSOR HOMEKIT_APPLE_UUID2("7F")
+
+/**
+ Defines that the accessory contains a contact sensor.
+
+ Required Characteristics:
+ - CONTACT_SENSOR_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_TAMPERED
+ - STATUS_LOW_BATTERY
+ */
 #define HOMEKIT_SERVICE_CONTACT_SENSOR HOMEKIT_APPLE_UUID2("80")
+
+/**
+ Defines that the accessory contains or controls a door.
+ 
+ Required Characteristics:
+ - CURRENT_POSITION
+ - TARGET_POSITION
+ - POSITION_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - HOLD_POSITION
+ - OBSTRUCTION_DETECTED
+ */
 #define HOMEKIT_SERVICE_DOOR HOMEKIT_APPLE_UUID2("81")
+
+/**
+ Defines that the accessory contains a (relative) humidity sensor.
+
+ Required Characteristics:
+ - CURRENT_RELATIVE_HUMIDITY
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_TAMPERED
+ - STATUS_LOW_BATTERY
+ */
 #define HOMEKIT_SERVICE_HUMIDITY_SENSOR HOMEKIT_APPLE_UUID2("82")
+
+/**
+ Defines that the accessory contains a (water) leak sensor.
+ 
+ Required Characteristics:
+ - LEAK_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ */
 #define HOMEKIT_SERVICE_LEAK_SENSOR HOMEKIT_APPLE_UUID2("83")
+
+/**
+ Defines that the accessory contains a light sensor.
+ 
+ Required Characteristics:
+ - CURRENT_AMBIENT_LIGHT_LEVEL
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ */
 #define HOMEKIT_SERVICE_LIGHT_SENSOR HOMEKIT_APPLE_UUID2("84")
+
+/**
+ Defines that the accessory contains a motion sensor.
+ 
+ Required Characteristics:
+ - MOTION_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ */
 #define HOMEKIT_SERVICE_MOTION_SENSOR HOMEKIT_APPLE_UUID2("85")
+
+/**
+ Defines that the accessory contains a occupancy sensor.
+ 
+ Required Characteristics:
+ - OCCUPANCY_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ */
 #define HOMEKIT_SERVICE_OCCUPANCY_SENSOR HOMEKIT_APPLE_UUID2("86")
+
+/**
+ Defines that the accessory contains a smoke sensor.
+ 
+ Required Characteristics:
+ - SMOKE_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ */
 #define HOMEKIT_SERVICE_SMOKE_SENSOR HOMEKIT_APPLE_UUID2("87")
+
+/**
+ Defines that the accessory contains a stateless programmable switch, also called a button.
+
+ Required Characteristics:
+ - PROGRAMMABLE_SWITCH_EVENT
+ 
+ Optional Characteristics:
+ - NAME
+ - SERVICE_LABEL_INDEX
+ */
 #define HOMEKIT_SERVICE_STATELESS_PROGRAMMABLE_SWITCH HOMEKIT_APPLE_UUID2("89")
+
+/**
+ Defines that the accessory contains a temperature sensor.
+ 
+ Required Characteristics:
+ - CURRENT_TEMPERATURE
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_TAMPERED
+ - STATUS_LOW_BATTERY
+ */
 #define HOMEKIT_SERVICE_TEMPERATURE_SENSOR HOMEKIT_APPLE_UUID2("8A")
+
+/**
+ Defines that the accessory contains or controls a window.
+
+ Required Characteristics:
+ - CURRENT_POSITION
+ - TARGET_POSITION
+ - POSITION_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - HOLD_POSITION
+ - OBSTRUCTION_DETECTED
+ */
 #define HOMEKIT_SERVICE_WINDOW HOMEKIT_APPLE_UUID2("8B")
+
+/**
+ Defines that the accessory constains a window covering such as a blind or curtain.
+ 
+ Required Characteristics:
+ - CURRENT_POSITION
+ - TARGET_POSITION
+ - POSITION_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - HOLD_POSITION
+ - TARGET_HORIZONTAL_TILT_ANGLE
+ - TARGET_VERTICAL_TILT_ANGLE
+ - CURRENT_HORIZONTAL_TILT_ANGLE
+ - CURRENT_VERTICAL_TILT_ANGLE
+ - OBSTRUCTION_DETECTED
+ */
 #define HOMEKIT_SERVICE_WINDOW_COVERING HOMEKIT_APPLE_UUID2("8C")
+
+/**
+ Defines that the accessory contains a battery that can be monitored.
+ 
+ Required Characteristics:
+ - BATTERY_LEVEL
+ - CHARGING_STATE
+ - STATUS_LOW_BATTERY
+ 
+ Optional Characteristics:
+ - NAME
+ */
 #define HOMEKIT_SERVICE_BATTERY_SERVICE HOMEKIT_APPLE_UUID2("96")
+
+/**
+ Defines that the accessory contains a carbon dioxide (CO2) sensor.
+
+ Required Characteristics:
+ - CARBON_DIOXIDE_DETECTED
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_ACTIVE
+ - STATUS_FAULT
+ - STATUS_LOW_BATTERY
+ - STATUS_TAMPERED
+ - CARBON_DIOXIDE_LEVEL
+ - CARBON_DIOXIDE_PEAK_LEVEL
+ */
 #define HOMEKIT_SERVICE_CARBON_DIOXIDE_SENSOR HOMEKIT_APPLE_UUID2("97")
+
+/**
+ Defines that the accessory allows for the management of a RTP (video) stream. This is mostly used for video doorbells and cameras and may not work standalone.
+ 
+ Required Characteristics:
+ - SUPPORTED_VIDEO_STREAM_CONFIGURATION
+ - SUPPORTED_AUDIO_STREAM_CONFIGURATION
+ - SUPPORTED_RTP_CONFIGURATION
+ - SELECTED_RTPS_CONFIGURATION
+ - STREAMING_STATUS
+ - SETUP_ENDPOINTS
+ 
+ Optional Characteristics:
+ - NAME
+ - VOLUME
+ */
 #define HOMEKIT_SERVICE_CAMERA_RTP_STREAM_MANAGEMENT HOMEKIT_APPLE_UUID3("110")
+
+/**
+ Defines that the accessory contains a microphone. This is mostly used for video doorbells and cameras and may not work standalone.
+ 
+ Required Characteristics:
+ - MUTE
+ 
+ Optional Characteristics:
+ - NAME
+ - VOLUME
+ */
 #define HOMEKIT_SERVICE_MICROPHONE HOMEKIT_APPLE_UUID3("112")
+
+/**
+ Defines that the accessory contains a speaker. This is mostly used for video doorbells and cameras and may not work standalone.
+
+ Required Characteristics:
+ - MUTE
+ 
+ Optional Characteristics:
+ - NAME
+ - VOLUME
+ */
 #define HOMEKIT_SERVICE_SPEAKER HOMEKIT_APPLE_UUID3("113")
+
+/**
+ Defines that the accessory contains a doorbell. This is mostly used for video doorbells and may not work standalone.
+
+ Required Characteristics:
+ - PROGRAMMABLE_SWITCH_EVENT
+ 
+ Optional Characteristics:
+ - NAME
+ - BRIGHTNESS
+ - VOLUME
+ */
 #define HOMEKIT_SERVICE_DOORBELL HOMEKIT_APPLE_UUID3("121")
+
+/**
+ Defines that the accessory contains a fan that implements version 2 of the fan features.
+ 
+ Required Characteristics:
+ - ACTIVE
+ 
+ Optional Characteristics:
+ - NAME
+ - CURRENT_FAN_STATE
+ - TARGET_FAN_STATE
+ - LOCK_PHYSICAL_CONTROLS
+ - ROTATION_DIRECTION
+ - ROTATION_SPEED
+ - SWING_MODE
+ */
 #define HOMEKIT_SERVICE_FAN2 HOMEKIT_APPLE_UUID2("B7")
+
+/**
+ Defines that the accessory contains slats that tilt horizontally or vertically.
+
+ Required Characteristics:
+ - SLAT_TYPE
+ - CURRENT_SLAT_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - CURRENT_TILT_ANGLE
+ - TARGET_TILT_ANGLE
+ - SWING_MODE
+ */
 #define HOMEKIT_SERVICE_SLAT HOMEKIT_APPLE_UUID2("B9")
+
+/**
+ Defines that the accessory contains a filter that can notify the user of needing maintenace.
+ 
+ Required Characteristics:
+ - FILTER_CHANGE_INDICATION
+ 
+ Optional Characteristics:
+ - NAME
+ - FILTER_LIFE_LEVEL
+ - RESET_FILTER_INDICATION
+ */
 #define HOMEKIT_SERVICE_FILTER_MAINTENANCE HOMEKIT_APPLE_UUID2("BA")
+
+/**
+ Defines that the accessory contains a air purifier.
+ 
+ Required Characteristics:
+ - ACTIVE
+ - CURRENT_AIR_PURIFIER_STATE
+ - TARGET_AIR_PURIFIER_STATE
+ 
+ Optional Characteristics:
+ - NAME
+ - SWING_MODE
+ - LOCK_PHYSICAL_CONTROLS
+ - ROTATION_SPEED
+ */
 #define HOMEKIT_SERVICE_AIR_PURIFIER HOMEKIT_APPLE_UUID2("BB")
+
+/**
+ Describes the service label scheme of the accessory. See the official HAP specification for more information.
+
+ Required Characteristics:
+ - ACTIVE
+ - SERVICE_LABEL_NAMESPACE
+ 
+ Optional Characteristics:
+ - NAME
+ */
 #define HOMEKIT_SERVICE_SERVICE_LABEL HOMEKIT_APPLE_UUID2("CC")
 
+/**
+ Defines that the accessory contains a faucet.
+ 
+ Required Characteristics:
+ - ACTIVE
+ 
+ Optional Characteristics:
+ - NAME
+ - STATUS_FAULT
+ */
+#define HOMEKIT_SERVICE_FAUCET HOMEKIT_APPLE_UUID2("D7")
 
-#define HOMEKIT_CHARACTERISTIC_ADMINISTRATOR_ONLY HOMEKIT_APPLE_UUID1("1")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_ADMINISTRATOR_ONLY(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_ADMINISTRATOR_ONLY, \
+/**
+ Defines that the accessory supports the control of a irrigation system.
+ 
+ Required Characteristics:
+ - ACTIVE
+ - PROGRAM_MODE
+ - IN_USE
+ 
+ Optional Characteristics:
+ - NAME
+ - REMAINING_DURATION
+ - STATUS_FAULT
+ */
+#define HOMEKIT_SERVICE_IRRIGATION_SYSTEM HOMEKIT_APPLE_UUID2("CF")
+
+/**
+ Defines that the accessory contains a (water) valve.
+ 
+ Required Characteristics:
+ - ACTIVE
+ - IN_USE
+ - VALVE_TYPE
+ 
+ Optional Characteristics:
+ - NAME
+ - SET_DURATION
+ - REMAINING_DURATION
+ - IS_CONFIGURED
+ - SERVICE_LABEL_INDEX
+ - STATUS_FAULT
+ */
+#define HOMEKIT_SERVICE_VALVE HOMEKIT_APPLE_UUID2("D0")
+
+// MARK: - Characteristics
+
+#define HOMEKIT_CHARACTERISTIC_ADMINISTRATOR_ONLY_ACCESS HOMEKIT_APPLE_UUID1("1")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_ADMINISTRATOR_ONLY_ACCESS(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_ADMINISTRATOR_ONLY_ACCESS, \
     .description = "Administrator Only Access", \
     .format = homekit_format_bool, \
     .permissions = homekit_permissions_paired_read \
@@ -611,7 +1149,6 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
-// #define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED HOMEKIT_APPLE_UUID2("69")
 #define HOMEKIT_CHARACTERISTIC_CONTACT_SENSOR_STATE HOMEKIT_APPLE_UUID2("6A")
 #define HOMEKIT_DECLARE_CHARACTERISTIC_CONTACT_SENSOR_STATE(_value, ...) \
     .type = HOMEKIT_CHARACTERISTIC_CONTACT_SENSOR_STATE, \
@@ -901,10 +1438,10 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM HOMEKIT_APPLE_UUID2("8E")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_SECURITY_SYSTEM_ALARM(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM, \
-    .description = "Security System Alarm", \
+#define HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE HOMEKIT_APPLE_UUID2("8E")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_SECURITY_SYSTEM_ALARM_TYPE, \
+    .description = "Security System Alarm Type", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
@@ -927,6 +1464,23 @@
     .valid_values = { \
         .count = 3, \
         .values = (uint8_t[]) { 0, 1, 2 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED HOMEKIT_APPLE_UUID2("69")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED, \
+    .description = "Carbon Monoxide Detected", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {1}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 2, \
+        .values = (uint8_t[]) { 0, 1 }, \
     }, \
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
@@ -955,10 +1509,11 @@
     .value = HOMEKIT_FLOAT_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED HOMEKIT_APPLE_UUID2("92")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_CARBON_MONOXIDE_DETECTED, \
-    .description = "Carbon Monoxide Detected", \
+
+#define HOMEKIT_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED HOMEKIT_APPLE_UUID2("92")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_CARBON_DIOXIDE_DETECTED, \
+    .description = "Carbon Dioxide Detected", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
@@ -1214,10 +1769,10 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
-#define HOMEKIT_CHARACTERISTIC_SLAT HOMEKIT_APPLE_UUID2("C0")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_SLAT(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_SLAT, \
-    .description = "Slat", \
+#define HOMEKIT_CHARACTERISTIC_SLAT_TYPE HOMEKIT_APPLE_UUID2("C0")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_SLAT_TYPE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_SLAT_TYPE, \
+    .description = "Slat Type", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read, \
     .min_value = (float[]) {0}, \
@@ -1500,5 +2055,100 @@
     .value = HOMEKIT_UINT32_(_value), \
     ##__VA_ARGS__
 
+#define HOMEKIT_CHARACTERISTIC_IN_USE HOMEKIT_APPLE_UUID2("D2")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_IN_USE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_IN_USE, \
+    .description = "In Use", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {1}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 2, \
+        .values = (uint8_t[]) { 0, 1 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_IS_CONFIGURED HOMEKIT_APPLE_UUID2("D6")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_IS_CONFIGURED(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_IS_CONFIGURED, \
+    .description = "Is Configured", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_paired_write \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {1}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 2, \
+        .values = (uint8_t[]) { 0, 1 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_PROGRAM_MODE HOMEKIT_APPLE_UUID2("D1")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_PROGRAM_MODE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_PROGRAM_MODE, \
+    .description = "Program Mode", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {2}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 3, \
+        .values = (uint8_t[]) { 0, 1, 2 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_REMAINING_DURATION HOMEKIT_APPLE_UUID2("D4")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_REMAINING_DURATION(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_REMAINING_DURATION, \
+    .description = "Remaining Duration", \
+    .format = homekit_format_uint32, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {3600}, \
+    .min_step = (float[]) {1}, \
+    .value = HOMEKIT_UINT32_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_SET_DURATION HOMEKIT_APPLE_UUID2("D3")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_SET_DURATION(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_SET_DURATION, \
+    .description = "Remaining Duration", \
+    .format = homekit_format_uint32, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_paired_write \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {3600}, \
+    .min_step = (float[]) {1}, \
+    .value = HOMEKIT_UINT32_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_VALVE_TYPE HOMEKIT_APPLE_UUID2("D5")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_VALVE_TYPE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_VALVE_TYPE, \
+    .description = "Valve Type", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {3}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 4, \
+        .values = (uint8_t[]) { 0, 1, 2, 3 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
 
 #endif // __HOMEKIT_CHARACTERISTICS__
