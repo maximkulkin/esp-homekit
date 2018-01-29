@@ -124,7 +124,7 @@ struct _client_context_t {
 
 
 typedef struct {
-    const homekit_characteristic_t *characteristic;
+    homekit_characteristic_t *characteristic;
     homekit_value_t value;
 } characteristic_event_t;
 
@@ -724,7 +724,15 @@ void send_404_response(client_context_t *context) {
 }
 
 
-void send_characteristic_event(client_context_t *context, const homekit_characteristic_t *ch, const homekit_value_t value) {
+typedef struct _client_event {
+    const homekit_characteristic_t *characteristic;
+    homekit_value_t value;
+
+    struct _client_event *next;
+} client_event_t;
+
+
+void send_client_events(client_context_t *context, client_event_t *events) {
     CLIENT_DEBUG(context, "Sending EVENT");
     DEBUG_HEAP();
 
@@ -735,13 +743,20 @@ void send_characteristic_event(client_context_t *context, const homekit_characte
 
     client_send(context, http_headers, sizeof(http_headers)-1);
 
+    // ~35 bytes per event JSON
+    // 256 should be enough for ~7 characteristic updates
     json_stream *json = json_new(256, client_send_chunk, context);
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
-    json_object_start(json);
-    write_characteristic_json(json, context, ch, 0, &value);
-    json_object_end(json);
+    client_event_t *e = events;
+    while (e) {
+        json_object_start(json);
+        write_characteristic_json(json, context, e->characteristic, 0, &e->value);
+        json_object_end(json);
+
+        e = e->next;
+    }
 
     json_array_end(json);
     json_object_end(json);
@@ -2897,17 +2912,55 @@ void homekit_server_process_notifications(homekit_server_t *server) {
     client_context_t *context = server->clients;
     while (context) {
         characteristic_event_t *event = NULL;
-        while (xQueueReceive(context->event_queue, &event, 0)) {
-            CLIENT_DEBUG(
-                context,
-                "Received event for %d.%d",
-                event->characteristic->service->accessory->id,
-                event->characteristic->id
-            );
-            send_characteristic_event(context, event->characteristic, event->value);
+        if (xQueueReceive(context->event_queue, &event, 0)) {
+            // Get and coalesce all client events
+            client_event_t *events_head = malloc(sizeof(client_event_t));
+            events_head->characteristic = event->characteristic;
+            homekit_value_copy(&events_head->value, &event->value);
+            events_head->next = NULL;
 
             homekit_value_destruct(&event->value);
             free(event);
+
+            client_event_t *events_tail = events_head;
+
+            while (xQueueReceive(context->event_queue, &event, 0)) {
+                client_event_t *e = events_head;
+                while (e) {
+                    if (e->characteristic == event->characteristic)
+                        break;
+
+                    e = e->next;
+                }
+
+                if (e) {
+                    homekit_value_destruct(&e->value);
+                } else {
+                    e = malloc(sizeof(client_event_t));
+                    e->characteristic = event->characteristic;
+                    e->next = NULL;
+
+                    events_tail->next = e;
+                    events_tail = e;
+                }
+
+                homekit_value_copy(&e->value, &event->value);
+
+                homekit_value_destruct(&event->value);
+                free(event);
+            }
+
+            send_client_events(context, events_head);
+
+            client_event_t *e = events_head;
+            while (e) {
+                client_event_t *next = e->next;
+
+                homekit_value_destruct(&e->value);
+                free(e);
+
+                e = next;
+            }
         }
 
         context = context->next;
