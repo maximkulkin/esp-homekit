@@ -2,6 +2,34 @@
 #include <string.h>
 #include <homekit/types.h>
 
+bool homekit_value_equal(homekit_value_t *a, homekit_value_t *b) {
+    if (a->is_null != b->is_null)
+        return false;
+
+    if (a->format != b->format)
+        return false;
+
+    switch (a->format) {
+        case homekit_format_bool:
+            return a->bool_value == b->bool_value;
+        case homekit_format_uint8:
+        case homekit_format_uint16:
+        case homekit_format_uint32:
+        case homekit_format_uint64:
+        case homekit_format_int:
+            return a->int_value == b->int_value;
+        case homekit_format_float:
+            return a->float_value == b->float_value;
+        case homekit_format_string:
+            return !strcmp(a->string_value, b->string_value);
+        case homekit_format_tlv:
+        case homekit_format_data:
+            // TODO: implement comparison
+            return false;
+    }
+
+    return false;
+}
 
 void homekit_value_copy(homekit_value_t *dst, homekit_value_t *src) {
     memset(dst, 0, sizeof(*dst));

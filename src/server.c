@@ -110,6 +110,9 @@ struct _client_context_t {
 
     bool disconnect;
 
+    homekit_characteristic_t *current_characteristic;
+    homekit_value_t *current_value;
+
     bool encrypted;
     byte *read_key;
     byte *write_key;
@@ -662,18 +665,26 @@ void homekit_setup_mdns(homekit_server_t *server);
 
 
 void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *context) {
+    client_context_t *client = context;
+
+    if (client->current_characteristic == ch && client->current_value && homekit_value_equal(client->current_value, &value))
+        // This value is set by this client, no need to send notification
+        return;
+
     DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
 
-    client_context_t *client = context;
-    if (client->event_queue) {
-        characteristic_event_t *event = malloc(sizeof(characteristic_event_t));
-        event->characteristic = ch;
-        homekit_value_copy(&event->value, &value);
-
-        DEBUG("Sending event to client %d", client->socket);
-
-        xQueueSendToBack(client->event_queue, &event, 10);
+    if (!client->event_queue) {
+        ERROR("Client has no event queue. Skipping notification");
+        return;
     }
+
+    characteristic_event_t *event = malloc(sizeof(characteristic_event_t));
+    event->characteristic = ch;
+    homekit_value_copy(&event->value, &value);
+
+    DEBUG("Sending event to client %d", client->socket);
+
+    xQueueSendToBack(client->event_queue, &event, 10);
 }
 
 
@@ -2291,8 +2302,15 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                 }
             }
 
-            if (!h_value.is_null)
+            if (!h_value.is_null) {
+                context->current_characteristic = ch;
+                context->current_value = &h_value;
+
                 homekit_characteristic_notify(ch, h_value);
+
+                context->current_characteristic = NULL;
+                context->current_value = NULL;
+            }
         }
 
         cJSON *j_events = cJSON_GetObjectItem(j_ch, "ev");
