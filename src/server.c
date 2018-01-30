@@ -2157,7 +2157,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                 case homekit_format_uint32:
                 case homekit_format_uint64:
                 case homekit_format_int: {
-                    if (j_value->type != cJSON_Number) {
+                    // We accept boolean values here in order to fix a bug in HomeKit. HomeKit sometimes sends a boolean instead of an integer of value 0 or 1.
+                    if (j_value->type != cJSON_Number && j_value->type != cJSON_False && j_value->type != cJSON_True) {
                         CLIENT_ERROR(context, "Failed to update %d.%d: value is not a number", aid, iid);
                         return HAPStatus_InvalidValue;
                     }
