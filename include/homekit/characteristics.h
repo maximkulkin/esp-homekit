@@ -822,7 +822,7 @@
     .format = homekit_format_uint32, \
     .unit = homekit_unit_seconds, \
     .permissions = homekit_permissions_paired_read \
-                 | homekit_permissions_write \
+                 | homekit_permissions_paired_write \
                  | homekit_permissions_notify, \
     .value = HOMEKIT_UINT32_(_value), \
     ##__VA_ARGS__
@@ -833,7 +833,7 @@
     .description = "Lock Target State", \
     .format = homekit_format_uint8, \
     .permissions = homekit_permissions_paired_read \
-                 | homekit_permissions_write \
+                 | homekit_permissions_paired_write \
                  | homekit_permissions_notify, \
     .min_value = (float[]) {0}, \
     .max_value = (float[]) {1}, \
