@@ -2263,7 +2263,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                     }
 
-                    h_value = HOMEKIT_INT(value, .format=ch->format);
+                    h_value.format = ch->format;
+                    h_value.int_value = value;
                     if (ch->setter) {
                         ch->setter(h_value);
                     } else {
