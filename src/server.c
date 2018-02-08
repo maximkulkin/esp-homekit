@@ -4,15 +4,22 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <espressif/esp_common.h>
-#include <esplibs/libmain.h>
 
 #include <lwip/sockets.h>
 
 #include <unistd.h>
+
+#if defined(ESP_IDF)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
+#elif defined(ESP_OPEN_RTOS)
 #include <FreeRTOS.h>
 #include <task.h>
 #include <queue.h>
+#else
+#error "Unknown target platform"
+#endif
 
 #include "mdnsresponder.h"
 #include <http-parser/http_parser.h>
@@ -949,7 +956,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
     DEBUG_HEAP();
 
 #ifdef HOMEKIT_OVERCLOCK_PAIR_SETUP
-    sdk_system_overclock();
+    homekit_overclock_start();
 #endif
 
     tlv_values_t *message = tlv_new();
@@ -1452,7 +1459,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
     tlv_free(message);
 
 #ifdef HOMEKIT_OVERCLOCK_PAIR_SETUP
-    sdk_system_restoreclock();
+    homekit_overclock_end();
 #endif
 }
 
@@ -1461,7 +1468,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
     DEBUG_HEAP();
 
 #ifdef HOMEKIT_OVERCLOCK_PAIR_VERIFY
-    sdk_system_overclock();
+    homekit_overclock_start();
 #endif
 
     tlv_values_t *message = tlv_new();
@@ -1888,7 +1895,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
     tlv_free(message);
 
 #ifdef HOMEKIT_OVERCLOCK_PAIR_VERIFY
-    sdk_system_restoreclock();
+    homekit_overclock_end();
 #endif
 }
 
@@ -2678,7 +2685,7 @@ void homekit_server_on_reset(client_context_t *context) {
 
     vTaskDelay(3000 / portTICK_PERIOD_MS);
 
-    sdk_system_restart();
+    homekit_system_restart();
 }
 
 
@@ -3216,15 +3223,6 @@ void homekit_server_task(void *args) {
         server->paired = true;
     }
 
-    if (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
-        INFO("Waiting for IP");
-        while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) {
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
-
-        INFO("Got IP, starting");
-    }
-
     mdns_init();
     homekit_setup_mdns(server);
 
@@ -3265,7 +3263,7 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
-    xTaskCreate(homekit_server_task, "HomeKit Server", 2048, server, 1, NULL);
+    xTaskCreate(homekit_server_task, "HomeKit Server", SERVER_TASK_STACK, server, 1, NULL);
 }
 
 void homekit_server_reset() {
