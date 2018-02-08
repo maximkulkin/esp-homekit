@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <esp/hwrand.h>
 #include <espressif/esp_common.h>
 #include <esplibs/libmain.h>
 
@@ -26,6 +25,7 @@
 #include "query_params.h"
 #include "json.h"
 #include "debug.h"
+#include "port.h"
 
 #include "homekit/homekit.h"
 #include "homekit/characteristics.h"
@@ -987,7 +987,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 CLIENT_DEBUG(context, "Using user-specified password: %s", password);
             } else {
                 for (int i=0; i<10; i++) {
-                    password[i] = hwrand() % 10 + '0';
+                    password[i] = homekit_random() % 10 + '0';
                 }
                 password[3] = password[6] = '-';
                 password[10] = 0;
@@ -3171,7 +3171,8 @@ char *homekit_accessory_id_generate() {
     char *accessory_id = malloc(18);
 
     byte buf[6];
-    hwrand_fill(buf, sizeof(buf));
+    homekit_random_fill(buf, sizeof(buf));
+
     snprintf(accessory_id, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
              buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
 
