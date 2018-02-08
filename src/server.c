@@ -89,7 +89,9 @@ typedef struct {
     bool paired;
     pairing_context_t *pairing_context;
 
-    struct pollfd *fds;
+    int listen_fd;
+    fd_set fds;
+    int max_fd;
     int nfds;
 
     client_context_t *clients;
@@ -143,7 +145,8 @@ void pairing_context_free(pairing_context_t *context);
 
 homekit_server_t *server_new() {
     homekit_server_t *server = malloc(sizeof(homekit_server_t));
-    server->fds = malloc(sizeof(struct pollfd) * (HOMEKIT_MAX_CLIENTS+1));
+    FD_ZERO(&server->fds);
+    server->max_fd = 0;
     server->nfds = 0;
     server->accessory_id = NULL;
     server->accessory_key = NULL;
@@ -164,9 +167,6 @@ void server_free(homekit_server_t *server) {
 
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
-
-    if (server->fds)
-        free(server->fds);
 
     if (server->clients) {
         client_context_t *client = server->clients;
@@ -2872,13 +2872,9 @@ static void homekit_client_process(client_context_t *context) {
 void homekit_server_close_client(homekit_server_t *server, client_context_t *context) {
     CLIENT_INFO(context, "Closing client connection");
 
-    for (int i=1; i<server->nfds; i++) {
-        if (server->fds[i].fd == context->socket) {
-            server->fds[i] = server->fds[server->nfds-1];
-            server->nfds--;
-            break;
-        }
-    }
+    FD_CLR(context->socket, &server->fds);
+    // TODO: recalc server->max_fd ?
+    server->nfds--;
 
     lwip_close(context->socket);
 
@@ -2908,7 +2904,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
 
 
 client_context_t *homekit_server_accept_client(homekit_server_t *server) {
-    int s = accept(server->fds[0].fd, (struct sockaddr *)NULL, (socklen_t *)NULL);
+    int s = accept(server->listen_fd, (struct sockaddr *)NULL, (socklen_t *)NULL);
     if (s < 0)
         return NULL;
 
@@ -2942,9 +2938,10 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     server->clients = context;
 
-    server->fds[server->nfds].fd = s;
-    server->fds[server->nfds].events = POLLIN;
+    FD_SET(s, &server->fds);
     server->nfds++;
+    if (s > server->max_fd)
+        server->max_fd = s;
 
     return context;
 }
@@ -3040,48 +3037,38 @@ static void homekit_run_server(homekit_server_t *server)
     DEBUG("Staring HTTP server");
 
     struct sockaddr_in serv_addr;
-    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     memset(&serv_addr, '0', sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(PORT);
-    bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-    listen(listenfd, 10);
+    bind(server->listen_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    listen(server->listen_fd, 10);
 
+    FD_SET(server->listen_fd, &server->fds);
+    server->max_fd = server->listen_fd;
     server->nfds = 1;
-    server->fds[0].fd = listenfd;
-    server->fds[0].events = POLLIN;
 
     for (;;) {
-        int triggered_nfds = poll(server->fds, server->nfds, 1000);
-        if (triggered_nfds) {
-            if (server->fds[0].revents & POLLIN) {
+        fd_set read_fds;
+        memcpy(&read_fds, &server->fds, sizeof(read_fds));
+
+        struct timeval timeout = { 1, 0 }; /* 1 second timeout */
+        int triggered_nfds = select(server->max_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (triggered_nfds > 0) {
+            if (FD_ISSET(server->listen_fd, &read_fds)) {
                 homekit_server_accept_client(server);
                 triggered_nfds--;
             }
 
-            for (int i=1; i<server->nfds && triggered_nfds; i++) {
-                if (!server->fds[i].revents)
-                    continue;
-
-                triggered_nfds--;
-
-                client_context_t *context = homekit_server_find_client_by_fd(
-                    server, server->fds[i].fd
-                );
-                if (!context) {
-                    // cleanup orphan FD, although should not happen
-                    server->nfds--;
-                    server->fds[i] = server->fds[server->nfds];
-                    i--;
-                    continue;
-                }
-
-                if (server->fds[i].revents & POLLIN) {
+            client_context_t *context = server->clients;
+            while (context && triggered_nfds) {
+                if (FD_ISSET(context->socket, &read_fds)) {
                     homekit_client_process(context);
-                } else if (server->fds[i].revents & (POLLNVAL | POLLERR)) {
-                    context->disconnect = true;
+                    triggered_nfds--;
                 }
+
+                context = context->next;
             }
 
             homekit_server_close_clients(server);
