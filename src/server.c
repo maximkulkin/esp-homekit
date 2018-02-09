@@ -3078,6 +3078,14 @@ void homekit_setup_mdns(homekit_server_t *server) {
         return;
     }
 
+    homekit_characteristic_t *model =
+        homekit_service_characteristic_by_type(accessory_info, HOMEKIT_CHARACTERISTIC_MODEL);
+    if (!model) {
+        ERROR("Invalid accessory declaration: "
+              "no Model characteristic in AccessoryInfo service");
+        return;
+    }
+
     char txt_rec[128];
     txt_rec[0] = 0;
 
@@ -3095,7 +3103,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     }
 
     // accessory model name (required)
-    add_txt("md=%s", name->value.string_value);
+    add_txt("md=%s", model->value.string_value);
     // protocol version (required)
     add_txt("pv=1.0");
     // device ID (required)
