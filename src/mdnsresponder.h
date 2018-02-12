@@ -18,7 +18,7 @@
 
 /* The default maximum reply size, increase as necessary. */
 #ifndef MDNS_RESPONDER_REPLY_SIZE
-#define MDNS_RESPONDER_REPLY_SIZE      512
+#define MDNS_RESPONDER_REPLY_SIZE      1536
 #endif
 
 // Starts the mDNS responder task, call first
