@@ -17,7 +17,7 @@ typedef struct {
     char *password;
     void (*password_callback)(const char *password);
 
-    // setupId in format "ABCD".
+    // setupId in format "ABCD". Base36 coded.
     // If setupId is not provided, a random setupId
     // will be used. In that case, the setupURI_callback
     // field must contain pointer to a function that should

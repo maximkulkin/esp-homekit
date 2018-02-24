@@ -3078,6 +3078,10 @@ static void homekit_run_server(homekit_server_t *server)
     server_free(server);
 }
 
+// The setup hash broadcast in the MDNS TXT record, which HomeKit uses
+// to match a QR code for automatic setup.
+// The hash is calculated from the accessory identifier and the four character setup identifier
+// Both those parameters must persit across restarts
 unsigned char *homekit_accessory_setupHash(homekit_server_t *server) {
 
   int plaintextLength = snprintf(NULL, 0, "%s%s", server->config->setupId, server->accessory_id);
@@ -3155,6 +3159,8 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // feature flags (required if non-zero)
     //   bit 0 - supports HAP pairing. required for all HomeKit accessories
     //   bits 1-7 - reserved
+    // NOTE: On non-certified HAP devices (like this package), we can't
+    // set this to 0x01 as clients will send parameters we don't understand.
     add_txt("ff=0");
     // status flags
     //   bit 0 - not paired
@@ -3164,7 +3170,9 @@ void homekit_setup_mdns(homekit_server_t *server) {
     add_txt("sf=%d", (server->paired) ? 0 : 1);
     // accessory category identifier
     add_txt("ci=%d", accessory->category);
-    // setup hash
+    // setup hash key used by HomeKit to match a device against its QR code
+    // during auto setup. The setupHash should persist across reboots,
+    // as its constituents must also persist.
     add_txt("sh=%s",homekit_accessory_setupHash(server));
     mdns_clear();
     mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
@@ -3229,7 +3237,7 @@ void homekit_server_task(void *args) {
         for (int i=0; i<4; i++) {
             setupIdentifier[i] = hwrand() % 26 + 'A';
         }
-        
+
         setupIdentifier[4] = 0;
         server->config->setupId = setupIdentifier;
 
