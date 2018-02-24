@@ -43,6 +43,7 @@
 struct _client_context_t;
 typedef struct _client_context_t client_context_t;
 
+static char base36Table[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 typedef enum {
     HOMEKIT_ENDPOINT_UNKNOWN = 0,
@@ -939,7 +940,62 @@ void homekit_server_on_identify(client_context_t *context) {
     }
 }
 
-const char* homekit_generate_setupURI(homekit_server_t *server, const char* pinCode);
+const char* homekit_generate_setupURI(homekit_server_t *server, const char* setupCode) {
+
+  const char* setupID = server->config->setupId;
+
+  int code = atoi(setupCode);
+
+  // Payload description 45 bits
+  // V = Version - 3 bits
+  // R = Reserved - 4 bits
+  // C = Category - 8 bits
+  // F = Flags - 4 bits
+  // P = Pin - 26 bits
+  // VVVRRRRCCCCCCCCFFFFPPPPPPPPPPPPPPPPPPPPPPPPPP
+  unsigned long long payload = 0;
+
+  uint8_t version, flags, reserved, category;
+  homekit_accessory_t *accessory = server->config->accessories[0];
+  category = (accessory->category & 0xFF);
+  version = 0;
+  reserved = 0;
+  flags = 2; // 2=IP, 4=BLE, 8=IP_WAC
+
+  char *setupURICodedPayload = malloc(9);
+  memset(setupURICodedPayload, '0', 8);
+  setupURICodedPayload[9] = 0;
+
+  payload |= (version & 0x7);
+
+  payload <<= 4;
+  payload |= (reserved & 0xf);
+
+  payload <<= 8;
+  payload |= (category & 0xff);
+
+  payload <<= 4;
+  payload |= (flags & 0xf);
+
+  payload <<= 27;
+  payload |= (code & 0x7ffffff);
+
+  int index = 8;
+  while (payload > 0) {
+      int remainder = payload % 36;
+      payload /= 36;
+      if (index >= 0) {
+          setupURICodedPayload[index--] = base36Table[remainder];
+      }
+  }
+
+  char *setupURI = malloc(7+9+6);
+  snprintf(setupURI, 7+9+6, "X-HM://%s%s", setupURICodedPayload, code);
+
+  free(setupURICodedPayload);
+
+  return setupURI;
+}
 
 void homekit_server_on_pair_setup(client_context_t *context, const byte *data, size_t size) {
     DEBUG("Pair Setup");
@@ -3178,15 +3234,6 @@ void homekit_setup_mdns(homekit_server_t *server) {
     mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
 }
 
-const char* homekit_generate_setupURI(homekit_server_t *server, const char* pinCode) {
-  //uint64_t payload = 0;
-  //homekit_accessory_t *accessory = server->config->accessories[0];
-  //uint8_t category = (accessory->category & 0xFF);
-
-  const char* setupURI = "X-HM://000000000ABCD";
-  return setupURI;
-}
-
 char *homekit_accessory_id_generate() {
     char *accessory_id = malloc(18);
 
@@ -3235,7 +3282,7 @@ void homekit_server_task(void *args) {
       char *setupIdentifier = malloc(5);
 
         for (int i=0; i<4; i++) {
-            setupIdentifier[i] = hwrand() % 26 + 'A';
+            setupIdentifier[i] = base36Table[(hwrand() % 36)];
         }
 
         setupIdentifier[4] = 0;
@@ -3314,10 +3361,10 @@ void homekit_server_init(homekit_server_config_t *config) {
     if (config->setupId) {
       const char *sid = config->setupId;
       if (strlen(sid) != 4 ||
-            !(ISALPHA(sid[0]) &&
-              ISALPHA(sid[1]) &&
-              ISALPHA(sid[2]) &&
-              ISALPHA(sid[3]))
+            !((ISALPHA(sid[0]) || ISDIGIT(sid[0])) &&
+              (ISALPHA(sid[1]) || ISDIGIT(sid[1])) &&
+              (ISALPHA(sid[2]) || ISDIGIT(sid[2])) &&
+              (ISALPHA(sid[3]) || ISDIGIT(sid[3])))
               )  {
         ERROR("Error initializing HomeKit accessory server: "
               "invalid setupId format");
