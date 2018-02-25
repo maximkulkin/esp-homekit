@@ -940,11 +940,24 @@ void homekit_server_on_identify(client_context_t *context) {
     }
 }
 
-const char* homekit_generate_setupURI(homekit_server_t *server, const char* setupCode) {
+const char* homekit_generate_setupURI(homekit_server_t *server) {
 
   const char* setupID = server->config->setupId;
+  char *setupCode = malloc(9);
+  setupCode[0] = server->config->password[0];
+  setupCode[1] = server->config->password[1];
+  setupCode[2] = server->config->password[2];
+
+  setupCode[3] = server->config->password[4];
+  setupCode[4] = server->config->password[5];
+
+  setupCode[5] = server->config->password[7];
+  setupCode[6] = server->config->password[8];
+  setupCode[7] = server->config->password[9];
+  setupCode[8] = 0;
 
   int code = atoi(setupCode);
+  free(setupCode);
 
   // Payload description 45 bits
   // V = Version - 3 bits
@@ -1030,44 +1043,9 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             CLIENT_DEBUG(context, "Initializing crypto");
             DEBUG_HEAP();
 
-            char password[11];
-            char pinCode[9];
-
-            if (context->server->config->password) {
-                strncpy(password, context->server->config->password, sizeof(password));
-                CLIENT_DEBUG(context, "Using user-specified password: %s", password);
-            } else {
-                for (int i=0; i<10; i++) {
-                    password[i] = hwrand() % 10 + '0';
-                }
-                password[3] = password[6] = '-';
-                password[10] = 0;
-                CLIENT_DEBUG(context, "Using random password: %s", password);
-            }
-
-            if (context->server->config->password_callback) {
-                context->server->config->password_callback(password);
-            }
-
-            pinCode[0] = password[0];
-            pinCode[1] = password[1];
-            pinCode[2] = password[2];
-
-            pinCode[3] = password[4];
-            pinCode[4] = password[5];
-
-            pinCode[5] = password[7];
-            pinCode[6] = password[8];
-            pinCode[7] = password[9];
-            pinCode[8] = 0;
-
-            if (context->server->config->setupURI_callback) {
-               context->server->config->setupURI_callback(homekit_generate_setupURI(context->server, pinCode));
-            }
-
             crypto_srp_init(
                 context->server->pairing_context->srp,
-                "Pair-Setup", password
+                "Pair-Setup", context->server->config->password
             );
 
             if (context->server->pairing_context->public_key) {
@@ -3279,6 +3257,7 @@ void homekit_server_task(void *args) {
     }
 
     if (!server->config->setupId) {
+
       char *setupIdentifier = malloc(5);
 
         for (int i=0; i<4; i++) {
@@ -3289,6 +3268,27 @@ void homekit_server_task(void *args) {
         server->config->setupId = setupIdentifier;
 
         DEBUG("Using random setup identifier: %s", setupIdentifier);
+    }
+
+    if (!server->config->password) {
+      char *password = malloc(11);
+      for (int i=0; i<10; i++) {
+          password[i] = base36Table[(hwrand() % 10)];
+      }
+      password[3] = password[6] = '-';
+      password[10] = 0;
+      server->config->password = password;
+
+      DEBUG("Using random password: %s", password);
+
+    }
+
+    if (server->config->password_callback) {
+        server->config->password_callback(server->config->password);
+    }
+
+    if (server->config->setupURI_callback) {
+      server->config->setupURI_callback(homekit_generate_setupURI(server));
     }
 
     pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
