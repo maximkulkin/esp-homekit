@@ -990,7 +990,7 @@ const char* homekit_generate_setupURI(homekit_server_t *server, const char* setu
   }
 
   char *setupURI = malloc(7+9+6);
-  snprintf(setupURI, 7+9+6, "X-HM://%s%s", setupURICodedPayload, code);
+  snprintf(setupURI, 7+9+6, "X-HM://%s%s", setupURICodedPayload, setupID);
 
   free(setupURICodedPayload);
 
