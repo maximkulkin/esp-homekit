@@ -943,21 +943,13 @@ void homekit_server_on_identify(client_context_t *context) {
 const char* homekit_generate_setupURI(homekit_server_t *server) {
 
   const char* setupID = server->config->setupId;
-  char *setupCode = malloc(9);
-  setupCode[0] = server->config->password[0];
-  setupCode[1] = server->config->password[1];
-  setupCode[2] = server->config->password[2];
+  
+  int code = 0;
 
-  setupCode[3] = server->config->password[4];
-  setupCode[4] = server->config->password[5];
-
-  setupCode[5] = server->config->password[7];
-  setupCode[6] = server->config->password[8];
-  setupCode[7] = server->config->password[9];
-  setupCode[8] = 0;
-
-  int code = atoi(setupCode);
-  free(setupCode);
+  for (char *c=server->config->password; *c; c++) {
+    if (isdigit((unsigned char)*c))
+    code = code * 10 + (*c) - '0';
+  }
 
   // Payload description 45 bits
   // V = Version - 3 bits
