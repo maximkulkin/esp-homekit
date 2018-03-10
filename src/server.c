@@ -943,13 +943,20 @@ void homekit_server_on_identify(client_context_t *context) {
 const char* homekit_generate_setupURI(homekit_server_t *server) {
 
   const char* setupID = server->config->setupId;
-  
+
   int code = 0;
 
   for (char *c=server->config->password; *c; c++) {
     if (isdigit((unsigned char)*c))
     code = code * 10 + (*c) - '0';
   }
+
+  uint8_t version, flags, reserved, category;
+  homekit_accessory_t *accessory = server->config->accessories[0];
+  category = (accessory->category & 0xFF);
+  version = 0;
+  reserved = 0;
+  flags = 2; // 2=IP, 4=BLE, 8=IP_WAC
 
   // Payload description 45 bits
   // V = Version - 3 bits
@@ -959,17 +966,6 @@ const char* homekit_generate_setupURI(homekit_server_t *server) {
   // P = Pin - 26 bits
   // VVVRRRRCCCCCCCCFFFFPPPPPPPPPPPPPPPPPPPPPPPPPP
   unsigned long long payload = 0;
-
-  uint8_t version, flags, reserved, category;
-  homekit_accessory_t *accessory = server->config->accessories[0];
-  category = (accessory->category & 0xFF);
-  version = 0;
-  reserved = 0;
-  flags = 2; // 2=IP, 4=BLE, 8=IP_WAC
-
-  char *setupURICodedPayload = malloc(9);
-  memset(setupURICodedPayload, '0', 8);
-  setupURICodedPayload[9] = 0;
 
   payload |= (version & 0x7);
 
@@ -985,19 +981,15 @@ const char* homekit_generate_setupURI(homekit_server_t *server) {
   payload <<= 27;
   payload |= (code & 0x7ffffff);
 
-  int index = 8;
-  while (payload > 0) {
-      int remainder = payload % 36;
-      payload /= 36;
-      if (index >= 0) {
-          setupURICodedPayload[index--] = base36Table[remainder];
-      }
+  char setupURICodedPayload[9];
+
+  for (int i=0; i<8; i++, payload/=36) {
+      setupURICodedPayload[7-i] = base36Table[payload % 36];
   }
+  setupURICodedPayload[8] = 0;
 
   char *setupURI = malloc(7+9+6);
   snprintf(setupURI, 7+9+6, "X-HM://%s%s", setupURICodedPayload, setupID);
-
-  free(setupURICodedPayload);
 
   return setupURI;
 }
