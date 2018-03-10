@@ -981,15 +981,16 @@ const char* homekit_generate_setupURI(homekit_server_t *server) {
   payload <<= 27;
   payload |= (code & 0x7ffffff);
 
-  char setupURICodedPayload[9];
+  char setupURICodedPayload[10];
 
-  for (int i=0; i<8; i++, payload/=36) {
-      setupURICodedPayload[7-i] = base36Table[payload % 36];
+  for (int i=0; i<9; i++, payload/=36) {
+      setupURICodedPayload[8-i] = base36Table[payload % 36];
   }
-  setupURICodedPayload[8] = 0;
+  setupURICodedPayload[9] = 0;
 
-  char *setupURI = malloc(7+9+6);
-  snprintf(setupURI, 7+9+6, "X-HM://%s%s", setupURICodedPayload, setupID);
+  int setupURISize = snprintf(NULL, 0, "X-HM://%s%s", setupURICodedPayload, setupID);
+  char *setupURI = malloc(setupURISize);
+  snprintf(setupURI, setupURISize+1, "X-HM://%s%s", setupURICodedPayload, setupID);
 
   return setupURI;
 }
