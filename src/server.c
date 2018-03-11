@@ -14,6 +14,9 @@
 #include <task.h>
 #include <queue.h>
 
+#include <wolfssl/wolfcrypt/hash.h>
+#include <wolfssl/wolfcrypt/coding.h>
+
 #include "mdnsresponder.h"
 #include <http-parser/http_parser.h>
 #include <cJSON.h>
@@ -36,9 +39,13 @@
 #define HOMEKIT_MAX_CLIENTS 16
 #endif
 
+char setupCode[11];
+char setupIdentifier[5];
 
 struct _client_context_t;
 typedef struct _client_context_t client_context_t;
+
+static char base36Table[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 
 typedef enum {
@@ -365,9 +372,6 @@ void client_context_free(client_context_t *c) {
 
     free(c);
 }
-
-
-
 
 pairing_context_t *pairing_context_new() {
     pairing_context_t *context = malloc(sizeof(pairing_context_t));
@@ -939,6 +943,68 @@ void homekit_server_on_identify(client_context_t *context) {
     }
 }
 
+const char* homekit_generate_setupURI(homekit_server_t *server) {
+
+  int code = 0;
+
+  for (char *c=setupCode; *c; c++) {
+    if (isdigit((unsigned char)*c))
+    code = code * 10 + (*c) - '0';
+  }
+
+  uint8_t version, flags, reserved, category;
+  homekit_accessory_t *accessory = server->config->accessories[0];
+  category = (accessory->category & 0xFF);
+  version = 0;
+  reserved = 0;
+  flags = 2; // 2=IP, 4=BLE, 8=IP_WAC
+
+  // Payload description 45 bits
+  // V = Version - 3 bits
+  // R = Reserved - 4 bits
+  // C = Category - 8 bits
+  // F = Flags - 4 bits
+  // P = Pin - 26 bits
+  // VVVRRRRCCCCCCCCFFFFPPPPPPPPPPPPPPPPPPPPPPPPPP
+  unsigned long long payload = 0;
+
+  payload |= (version & 0x7);
+
+  payload <<= 4;
+  payload |= (reserved & 0xf);
+
+  payload <<= 8;
+  payload |= (category & 0xff);
+
+  payload <<= 4;
+  payload |= (flags & 0xf);
+
+  payload <<= 27;
+  payload |= (code & 0x7ffffff);
+
+  char setupURICodedPayload[10];
+
+  for (int i=0; i<9; i++, payload/=36) {
+      setupURICodedPayload[8-i] = base36Table[payload % 36];
+  }
+  setupURICodedPayload[9] = 0;
+
+  int setupURISize = snprintf(NULL, 0, "X-HM://%s%s", setupURICodedPayload, setupIdentifier);
+  char *setupURI = malloc(setupURISize);
+  snprintf(setupURI, setupURISize+1, "X-HM://%s%s", setupURICodedPayload, setupIdentifier);
+
+  return setupURI;
+}
+
+ void homekit_generate_setupCode() {
+  for (int i=0; i<10; i++) {
+      setupCode[i] = base36Table[(hwrand() % 10)];
+  }
+  setupCode[3] = setupCode[6] = '-';
+  setupCode[10] = 0;
+}
+
+
 void homekit_server_on_pair_setup(client_context_t *context, const byte *data, size_t size) {
     DEBUG("Pair Setup");
     DEBUG_HEAP();
@@ -972,26 +1038,18 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             CLIENT_DEBUG(context, "Initializing crypto");
             DEBUG_HEAP();
 
-            char password[11];
-            if (context->server->config->password) {
-                strncpy(password, context->server->config->password, sizeof(password));
-                CLIENT_DEBUG(context, "Using user-specified password: %s", password);
-            } else {
-                for (int i=0; i<10; i++) {
-                    password[i] = hwrand() % 10 + '0';
-                }
-                password[3] = password[6] = '-';
-                password[10] = 0;
-                CLIENT_DEBUG(context, "Using random password: %s", password);
-            }
-
             if (context->server->config->password_callback) {
-                context->server->config->password_callback(password);
+
+              if (!context->server->config->password) {
+                homekit_generate_setupCode();
+              }
+
+              context->server->config->password_callback(setupCode);
             }
 
             crypto_srp_init(
                 context->server->pairing_context->srp,
-                "Pair-Setup", password
+                "Pair-Setup", setupCode
             );
 
             if (context->server->pairing_context->public_key) {
@@ -1961,7 +2019,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     }
 
     characteristic_format_t format = 0;
-    if (bool_endpoint_param("meta")) 
+    if (bool_endpoint_param("meta"))
         format |= characteristic_format_meta;
 
     if (bool_endpoint_param("perms"))
@@ -3058,6 +3116,29 @@ static void homekit_run_server(homekit_server_t *server)
     server_free(server);
 }
 
+// The setup hash broadcast in the MDNS TXT record, which HomeKit uses
+// to match a QR code for automatic setup.
+// The hash is calculated from the accessory identifier and the four character setup identifier
+// Both those parameters must persit across restarts
+unsigned char *homekit_accessory_setupHash(homekit_server_t *server) {
+
+  int plaintextLength = snprintf(NULL, 0, "%s%s", setupIdentifier, server->accessory_id);
+  char *plaintext = malloc(plaintextLength + 1);
+  snprintf(plaintext, plaintextLength + 1, "%s%s", setupIdentifier, server->accessory_id);
+
+  unsigned char *setupHash = malloc(9);
+  memset(setupHash, 0, 9);
+  unsigned char *hash = malloc(SHA512_DIGEST_SIZE);
+  word32 len = 9;
+
+  wc_Sha512Hash((const unsigned char*)plaintext, plaintextLength, hash);
+  Base64_Encode_NoNl((const unsigned char*) hash, 4, setupHash, &len);
+
+  free(hash);
+  free(plaintext);
+
+  return setupHash;
+}
 
 void homekit_setup_mdns(homekit_server_t *server) {
     INFO("Configuring mDNS");
@@ -3116,6 +3197,8 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // feature flags (required if non-zero)
     //   bit 0 - supports HAP pairing. required for all HomeKit accessories
     //   bits 1-7 - reserved
+    // NOTE: On non-certified HAP devices (like this package), we can't
+    // set this to 0x01 as clients will send parameters we don't understand.
     add_txt("ff=0");
     // status flags
     //   bit 0 - not paired
@@ -3125,6 +3208,13 @@ void homekit_setup_mdns(homekit_server_t *server) {
     add_txt("sf=%d", (server->paired) ? 0 : 1);
     // accessory category identifier
     add_txt("ci=%d", accessory->category);
+
+    if (server->config->setupId) {
+      // setup hash key used by HomeKit to match a device against its QR code
+      // during auto setup. The setupHash should persist across reboots,
+      // as its constituents must also persist.
+      add_txt("sh=%s",homekit_accessory_setupHash(server));
+    }
 
     mdns_clear();
     mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
@@ -3174,6 +3264,26 @@ void homekit_server_task(void *args) {
         INFO("Using existing accessory ID: %s", server->accessory_id);
     }
 
+    if (server->config->setupURI_callback) {
+
+      if (!server->config->setupId) {
+          for (int i=0; i<4; i++) {
+              setupIdentifier[i] = base36Table[(hwrand() % 36)];
+          }
+          setupIdentifier[4] = 0;
+          server->config->setupId = setupIdentifier;
+
+          DEBUG("Using random setup identifier: %s", setupIdentifier);
+      }
+
+      if (!server->config->password) {
+        homekit_generate_setupCode();
+        DEBUG("Using random setup code for setup URI: %s", setupCode);
+      }
+
+      server->config->setupURI_callback(homekit_generate_setupURI(server));
+    }
+
     pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
     pairing_t *pairing;
     while ((pairing = homekit_storage_next_pairing(pairing_it))) {
@@ -3208,6 +3318,7 @@ void homekit_server_task(void *args) {
 }
 
 #define ISDIGIT(x) isdigit((unsigned char)(x))
+#define ISALPHA(x) isalpha((unsigned char)(x))
 
 void homekit_server_init(homekit_server_config_t *config) {
     if (!config->accessories) {
@@ -3216,10 +3327,20 @@ void homekit_server_init(homekit_server_config_t *config) {
         return;
     }
 
-    if (!config->password && !config->password_callback) {
+    if (!(config->password_callback || config->setupURI_callback)) {
+
+      // at least a password must be present, if no callback is available.
+      if (!config->password) {
         ERROR("Error initializing HomeKit accessory server: "
-              "neither password nor password callback is specified");
+              "neither setupCode nor display callback is specified");
         return;
+      }
+    }
+
+    if (config->setupId && !(config->password || config->setupURI_callback)) {
+      ERROR("Error initializing HomeKit accessory server: "
+            "setup initializer is set but neither setupCode nor URI display callback is specified");
+      return;
     }
 
     if (config->password) {
@@ -3231,7 +3352,27 @@ void homekit_server_init(homekit_server_config_t *config) {
             ERROR("Error initializing HomeKit accessory server: "
                   "invalid password format");
             return;
+        } else {
+          strncpy(setupCode, config->password, sizeof(setupCode));
+          DEBUG("Using user-specified setupCode: %s", setupCode);
         }
+    }
+
+    if (config->setupId) {
+      const char *sid = config->setupId;
+      if (strlen(sid) != 4 ||
+            !((ISALPHA(sid[0]) || ISDIGIT(sid[0])) &&
+              (ISALPHA(sid[1]) || ISDIGIT(sid[1])) &&
+              (ISALPHA(sid[2]) || ISDIGIT(sid[2])) &&
+              (ISALPHA(sid[3]) || ISDIGIT(sid[3])))
+              )  {
+        ERROR("Error initializing HomeKit accessory server: "
+              "invalid setupId format");
+        return;
+      } else {
+        strncpy(setupIdentifier, config->setupId, sizeof(setupIdentifier));
+        DEBUG("Using user-specified setup identifier: %s", setupIdentifier);
+      }
     }
 
     homekit_accessories_init(config->accessories);
