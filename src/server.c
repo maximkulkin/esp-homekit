@@ -21,7 +21,6 @@
 #error "Unknown target platform"
 #endif
 
-#include "mdnsresponder.h"
 #include <http-parser/http_parser.h>
 #include <cJSON.h>
 
@@ -1981,7 +1980,6 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
-    char *id = strdup(id_param->value);
 
     bool bool_endpoint_param(const char *name) {
         query_param_t *param = query_params_find(context->endpoint_params, name);
@@ -2003,6 +2001,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 
     bool success = true;
 
+    char *id = strdup(id_param->value);
     char *ch_id;
     char *_id = id;
     while ((ch_id = strsep(&_id, ","))) {
@@ -3116,50 +3115,33 @@ void homekit_setup_mdns(homekit_server_t *server) {
         return;
     }
 
-    char txt_rec[128];
-    txt_rec[0] = 0;
-
-    void add_txt(const char *format, ...) {
-        va_list arg_ptr;
-        va_start(arg_ptr, format);
-
-        char buffer[128];
-        int buffer_len = vsnprintf(buffer, sizeof(buffer), format, arg_ptr);
-
-        va_end(arg_ptr);
-
-        if (buffer_len && buffer_len < sizeof(buffer)-1)
-            mdns_TXT_append(txt_rec, sizeof(txt_rec), buffer, buffer_len);
-    }
+    homekit_mdns_configure_init(name->value.string_value, PORT);
 
     // accessory model name (required)
-    add_txt("md=%s", model->value.string_value);
+    homekit_mdns_add_txt("md", "%s", model->value.string_value);
     // protocol version (required)
-    add_txt("pv=1.0");
+    homekit_mdns_add_txt("pv", "1.0");
     // device ID (required)
     // should be in format XX:XX:XX:XX:XX:XX, otherwise devices will ignore it
-    add_txt("id=%s", server->accessory_id);
+    homekit_mdns_add_txt("id", "%s", server->accessory_id);
     // current configuration number (required)
-    add_txt("c#=%d", accessory->config_number);
+    homekit_mdns_add_txt("c#", "%d", accessory->config_number);
     // current state number (required)
-    add_txt("s#=1");
+    homekit_mdns_add_txt("s#", "1");
     // feature flags (required if non-zero)
     //   bit 0 - supports HAP pairing. required for all HomeKit accessories
     //   bits 1-7 - reserved
-    add_txt("ff=0");
+    homekit_mdns_add_txt("ff", "0");
     // status flags
     //   bit 0 - not paired
     //   bit 1 - not configured to join WiFi
     //   bit 2 - problem detected on accessory
     //   bits 3-7 - reserved
-    add_txt("sf=%d", (server->paired) ? 0 : 1);
+    homekit_mdns_add_txt("sf", "%d", (server->paired) ? 0 : 1);
     // accessory category identifier
-    add_txt("ci=%d", accessory->category);
+    homekit_mdns_add_txt("ci", "%d", accessory->category);
 
-    INFO("mDNS announcement: Name=%s %s Port=%d TTL=%d", name->value.string_value, txt_rec, PORT, MDNS_TTL);
-    
-    mdns_clear();
-    mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, MDNS_TTL);
+    homekit_mdns_configure_finalize();
 }
 
 char *homekit_accessory_id_generate() {
@@ -3223,7 +3205,7 @@ void homekit_server_task(void *args) {
         server->paired = true;
     }
 
-    mdns_init();
+    homekit_mdns_init();
     homekit_setup_mdns(server);
 
     homekit_run_server(server);

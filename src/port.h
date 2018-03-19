@@ -28,3 +28,9 @@ void homekit_overclock_end();
 #else
 #define SERVER_TASK_STACK 2048
 #endif
+
+
+void homekit_mdns_init();
+void homekit_mdns_configure_init(const char *instance_name, int port);
+void homekit_mdns_add_txt(const char *key, const char *format, ...);
+void homekit_mdns_configure_finalize();
