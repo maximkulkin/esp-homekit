@@ -2900,6 +2900,18 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
 
+    const int yes = 1; /* enable sending keepalive probes for socket */
+    setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
+
+    const int idle = 180; /* 180 sec iddle before start sending probes */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+
+    const int interval = 30; /* 30 sec between probes */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
+
+    const int maxpkt = 4; /* Drop connection after 4 probes without response */
+    setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
+    
     client_context_t *context = client_context_new();
     context->server = server;
     context->socket = s;
