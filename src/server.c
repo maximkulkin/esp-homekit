@@ -1976,7 +1976,8 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     bool success = true;
 
     char *ch_id;
-    while ((ch_id = strsep(&id, ","))) {
+    char *_id = id;
+    while ((ch_id = strsep(&_id, ","))) {
         char *dot = strstr(ch_id, ".");
         if (!dot) {
             send_json_error_response(context, 400, HAPStatus_InvalidValue);
@@ -2022,7 +2023,8 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         json_object_end(json);
     }
 
-    while ((ch_id = strsep(&id, ","))) {
+    _id = id;
+    while ((ch_id = strsep(&_id, ","))) {
         char *dot = strstr(ch_id, ".");
         *dot = 0;
         int aid = atoi(ch_id);
