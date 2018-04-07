@@ -32,6 +32,10 @@
 
 #define PORT 5556
 
+#ifndef MDNS_TTL
+#define MDNS_TTL 4500
+#endif
+
 #ifndef HOMEKIT_MAX_CLIENTS
 #define HOMEKIT_MAX_CLIENTS 16
 #endif
@@ -3140,8 +3144,10 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // accessory category identifier
     add_txt("ci=%d", accessory->category);
 
+    INFO("mDNS announcement: Name=%s %s Port=%d TTL=%d", name->value.string_value, txt_rec, PORT, MDNS_TTL);
+    
     mdns_clear();
-    mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, 60);
+    mdns_add_facility(name->value.string_value, "_hap", txt_rec, mdns_TCP, PORT, MDNS_TTL);
 }
 
 char *homekit_accessory_id_generate() {
