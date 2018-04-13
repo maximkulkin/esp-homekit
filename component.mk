@@ -18,7 +18,7 @@ HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
 HOMEKIT_MAX_CLIENTS ?= 16
 # Set to 1 to enable WolfSSL low resources, saving about 70KB in firmware size,
 # but increasing pair verify time from 0.5 to 3.6 secs.
-WOLFSSL_LOWRESOURCES_CFLAGS ?= 0
+HOMEKIT_SMALL ?= 0
 # Set to 1 to disable overclock on pair-verify function (Will increase pair verify time to double).
 HOMEKIT_DISABLE_OVERCLOCK ?= 0
 
@@ -39,15 +39,16 @@ EXTRA_WOLFSSL_CFLAGS = \
 	-DHAVE_POLY1305 \
 	-DHAVE_ED25519 \
 	-DHAVE_CURVE25519 \
-	-DWOLFCRYPT_ONLY
-
-ifeq ($(WOLFSSL_LOWRESOURCES_CFLAGS),1)
-EXTRA_WOLFSSL_CFLAGS += -DNO_SESSION_CACHE \
+	-DWOLFCRYPT_ONLY \
+	-DNO_SESSION_CACHE \
 	-DRSA_LOW_MEM \
 	-DGCM_SMALL \
-	-DCURVE25519_SMALL \
-	-DED25519_SMALL \
 	-DUSE_SLOW_SHA512
+
+ifeq ($(HOMEKIT_SMALL),1)
+EXTRA_WOLFSSL_CFLAGS += 
+	-DCURVE25519_SMALL \
+	-DED25519_SMALL
 endif
 
 wolfssl_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS)
