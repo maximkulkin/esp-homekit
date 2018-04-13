@@ -16,6 +16,11 @@ HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
 # Maximum number of simultaneous clients allowed.
 # Each connected client requires ~1100-1200 bytes of RAM.
 HOMEKIT_MAX_CLIENTS ?= 16
+# Set to 1 to enable WolfSSL low resources, saving about 70KB in firmware size,
+# but increasing pair verify time from 0.5 to 3.6 secs.
+HOMEKIT_SMALL ?= 0
+# Set to 1 to disable overclock on pair-verify function (Will increase pair verify time to double).
+HOMEKIT_DISABLE_OVERCLOCK ?= 0
 
 INC_DIRS += $(homekit_ROOT)/include
 
@@ -37,15 +42,22 @@ EXTRA_WOLFSSL_CFLAGS = \
 	-DNO_SESSION_CACHE \
 	-DRSA_LOW_MEM \
 	-DGCM_SMALL \
-	-DCURVE25519_SMALL \
-	-DED25519_SMALL \
 	-DUSE_SLOW_SHA512 \
 	-DWOLFCRYPT_ONLY
+
+ifeq ($(HOMEKIT_SMALL),1)
+EXTRA_WOLFSSL_CFLAGS += -DCURVE25519_SMALL \
+	-DED25519_SMALL
+endif
 
 wolfssl_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS)
 homekit_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS) \
 	-DSPIFLASH_BASE_ADDR=$(HOMEKIT_SPI_FLASH_BASE_ADDR) \
 	-DHOMEKIT_MAX_CLIENTS=$(HOMEKIT_MAX_CLIENTS)
+
+ifeq ($(HOMEKIT_DISABLE_OVERCLOCK),1)
+homekit_CFLAGS += -DHOMEKIT_DISABLE_OVERCLOCK
+endif
 
 ifeq ($(HOMEKIT_DEBUG),1)
 homekit_CFLAGS += -DHOMEKIT_DEBUG
