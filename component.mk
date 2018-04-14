@@ -63,6 +63,7 @@ endif
 
 ifeq ($(HOMEKIT_OVERCLOCK_VERIFY),1)
 homekit_CFLAGS += -DHOMEKIT_OVERCLOCK_VERIFY
+endif
 
 ifeq ($(HOMEKIT_DEBUG),1)
 homekit_CFLAGS += -DHOMEKIT_DEBUG
