@@ -948,7 +948,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
     DEBUG("Pair Setup");
     DEBUG_HEAP();
 
-#ifdef HOMEKIT_OVERCLOCK_SETUP
+#ifdef HOMEKIT_OVERCLOCK_PAIR_SETUP
     sdk_system_overclock();
 #endif
 
@@ -1451,7 +1451,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
     tlv_free(message);
 
-#ifdef HOMEKIT_OVERCLOCK_SETUP
+#ifdef HOMEKIT_OVERCLOCK_PAIR_SETUP
     sdk_system_restoreclock();
 #endif
 }
@@ -1460,7 +1460,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
     DEBUG("HomeKit Pair Verify");
     DEBUG_HEAP();
 
-#ifdef HOMEKIT_OVERCLOCK_VERIFY
+#ifdef HOMEKIT_OVERCLOCK_PAIR_VERIFY
     sdk_system_overclock();
 #endif
 
@@ -1887,7 +1887,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
     tlv_free(message);
 
-#ifdef HOMEKIT_OVERCLOCK_VERIFY
+#ifdef HOMEKIT_OVERCLOCK_PAIR_VERIFY
     sdk_system_restoreclock();
 #endif
 }
