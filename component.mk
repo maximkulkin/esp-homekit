@@ -19,10 +19,13 @@ HOMEKIT_MAX_CLIENTS ?= 16
 # Set to 1 to enable WolfSSL low resources, saving about 70KB in firmware size,
 # but increasing pair verify time from 0.5 to 3.6 secs.
 HOMEKIT_SMALL ?= 0
+# Set to 1 to enable overclock on some functions (It will reduce times by half).
+# Enable this option will override any other overclock option.
+HOMEKIT_OVERCLOCK ?= 1
 # Set to 1 to enable overclock on initial pair-setup function (It will reduce pair setup time by half).
-HOMEKIT_OVERCLOCK_SETUP ?= 1
+HOMEKIT_OVERCLOCK_PAIR_SETUP ?= 0
 # Set to 1 to enable overclock on pair-verify function (It will reduce pair verify time by half).
-HOMEKIT_OVERCLOCK_VERIFY ?= 1
+HOMEKIT_OVERCLOCK_PAIR_VERIFY ?= 0
 
 INC_DIRS += $(homekit_ROOT)/include
 
@@ -57,12 +60,17 @@ homekit_CFLAGS += $(EXTRA_WOLFSSL_CFLAGS) \
 	-DSPIFLASH_BASE_ADDR=$(HOMEKIT_SPI_FLASH_BASE_ADDR) \
 	-DHOMEKIT_MAX_CLIENTS=$(HOMEKIT_MAX_CLIENTS)
 
-ifeq ($(HOMEKIT_OVERCLOCK_SETUP),1)
-homekit_CFLAGS += -DHOMEKIT_OVERCLOCK_SETUP
+ifeq ($(HOMEKIT_OVERCLOCK),1)
+HOMEKIT_OVERCLOCK_PAIR_SETUP = 1
+HOMEKIT_OVERCLOCK_PAIR_VERIFY = 1
 endif
 
-ifeq ($(HOMEKIT_OVERCLOCK_VERIFY),1)
-homekit_CFLAGS += -DHOMEKIT_OVERCLOCK_VERIFY
+ifeq ($(HOMEKIT_OVERCLOCK_PAIR_SETUP),1)
+homekit_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_SETUP
+endif
+
+ifeq ($(HOMEKIT_OVERCLOCK_PAIR_VERIFY),1)
+homekit_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_VERIFY
 endif
 
 ifeq ($(HOMEKIT_DEBUG),1)
