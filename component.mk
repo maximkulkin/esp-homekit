@@ -17,7 +17,7 @@ HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
 # Each connected client requires ~1100-1200 bytes of RAM.
 HOMEKIT_MAX_CLIENTS ?= 16
 # Set to 1 to enable WolfSSL low resources, saving about 70KB in firmware size,
-# but increasing pair verify time from 0.5 to 3.6 secs.
+# but increasing pair verify time from 1 to 7 secs (Without overclocking).
 HOMEKIT_SMALL ?= 0
 # Set to 1 to enable the ability to use overclock on some functions (It will reduce times by half).
 HOMEKIT_OVERCLOCK ?= 1
