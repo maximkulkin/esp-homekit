@@ -8,7 +8,9 @@
 #include <esplibs/libmain.h>
 #include "mdnsresponder.h"
 
-#define MDNS_TTL 60
+#ifndef MDNS_TTL
+#define MDNS_TTL 4500
+#endif
 
 uint32_t homekit_random() {
     return hwrand();
