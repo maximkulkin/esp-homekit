@@ -39,10 +39,6 @@
 
 #define PORT 5556
 
-#ifndef MDNS_TTL
-#define MDNS_TTL 4500
-#endif
-
 #ifndef HOMEKIT_MAX_CLIENTS
 #define HOMEKIT_MAX_CLIENTS 16
 #endif
