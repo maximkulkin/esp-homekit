@@ -167,7 +167,7 @@ typedef struct _homekit_characteristic_change_callback {
 } homekit_characteristic_change_callback_t;
 
 
-#define HOMEKIT_CHARACTERISTIC_CALLBACK(f) &(homekit_characteristic_change_callback_t) { .function = f }
+#define HOMEKIT_CHARACTERISTIC_CALLBACK(f, ...) &(homekit_characteristic_change_callback_t) { .function = f, ##__VA_ARGS__ }
 
 
 struct _homekit_characteristic {
