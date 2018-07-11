@@ -1983,7 +1983,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     }
 
     characteristic_format_t format = 0;
-    if (bool_endpoint_param("meta")) 
+    if (bool_endpoint_param("meta"))
         format |= characteristic_format_meta;
 
     if (bool_endpoint_param("perms"))
@@ -2399,6 +2399,9 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             json_string(json1, "status"); json_integer(json1, statuses[i]);
             json_object_end(json1);
         }
+
+        json_array_end(json);
+        json_object_end(json); // response
 
         json_flush(json1);
         json_free(json1);
@@ -2933,7 +2936,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     const int maxpkt = 4; /* Drop connection after 4 probes without response */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
-    
+
     client_context_t *context = client_context_new();
     context->server = server;
     context->socket = s;
