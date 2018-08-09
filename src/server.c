@@ -2400,8 +2400,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             json_object_end(json1);
         }
 
-        json_array_end(json);
-        json_object_end(json); // response
+        json_array_end(json1);
+        json_object_end(json1); // response
 
         json_flush(json1);
         json_free(json1);
