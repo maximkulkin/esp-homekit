@@ -2651,9 +2651,9 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 }
                 r = crypto_ed25519_export_public_key(pairing->device_key, public_key, &public_key_size);
 
-                tlv_add_string_value(response, TLVType_Identifier, pairing->device_id);
-                tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
                 tlv_add_integer_value(response, TLVType_Permissions, pairing->permissions);
+                tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
+                tlv_add_string_value(response, TLVType_Identifier, pairing->device_id);
 
                 first = false;
 
