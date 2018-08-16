@@ -2269,4 +2269,17 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
+#define HOMEKIT_CHARACTERISTIC_WATER_LEVEL HOMEKIT_APPLE_UUID2("B5")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_WATER_LEVEL(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_WATER_LEVEL, \
+    .description = "Water Level", \
+    .format = homekit_format_float, \
+    .unit = homekit_unit_percentage, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {100}, \
+    .min_step = (float[]) {1}, \
+    ##__VA_ARGS__
+
 #endif // __HOMEKIT_CHARACTERISTICS__
