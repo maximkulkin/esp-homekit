@@ -2234,4 +2234,39 @@
     .value = HOMEKIT_UINT8_(_value), \
     ##__VA_ARGS__
 
+#define HOMEKIT_CHARACTERISTIC_CURRENT_HUMIDIFIER_DEHUMIDIFIER_STATE HOMEKIT_APPLE_UUID2("B3")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_CURRENT_HUMIDIFIER_DEHUMIDIFIER_STATE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_CURRENT_HUMIDIFIER_DEHUMIDIFIER_STATE, \
+    .description = "Current Humidifier Dehumidifier State", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {3}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 4, \
+        .values = (uint8_t[]) { 0, 1, 2, 3 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_TARGET_HUMIDIFIER_DEHUMIDIFIER_STATE HOMEKIT_APPLE_UUID2("B4")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_TARGET_HUMIDIFIER_DEHUMIDIFIER_STATE(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_TARGET_HUMIDIFIER_DEHUMIDIFIER_STATE, \
+    .description = "Target Humidifier Dehumidifier State", \
+    .format = homekit_format_uint8, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_paired_write \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {2}, \
+    .min_step = (float[]) {1}, \
+    .valid_values = { \
+        .count = 3, \
+        .values = (uint8_t[]) { 0, 1, 2 }, \
+    }, \
+    .value = HOMEKIT_UINT8_(_value), \
+    ##__VA_ARGS__
+
 #endif // __HOMEKIT_CHARACTERISTICS__
