@@ -603,6 +603,10 @@
 /**
  Defines that the accessory contains a heater and/or cooler.
  
+ Accessory Category:
+ - 20: Heaters
+ - 21: Air Conditioners
+ 
  Required Characteristics:
  - ACTIVE
  - CURRENT_TEMPERATURE
@@ -622,6 +626,10 @@
 
 /**
  Defines that the accessory contains a humidifier and/or dehumidifier.
+ 
+ Accessory Category:
+ - 22: Humidifiers
+ - 23: Dehumidifiers
  
  Required Characteristics:
  - ACTIVE
