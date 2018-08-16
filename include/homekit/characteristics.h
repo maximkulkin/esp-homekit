@@ -2282,4 +2282,32 @@
     .min_step = (float[]) {1}, \
     ##__VA_ARGS__
 
+#define HOMEKIT_CHARACTERISTIC_RELATIVE_HUMIDITY_DEHUMIDIFIER_THRESHOLD HOMEKIT_APPLE_UUID2("C9")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_RELATIVE_HUMIDITY_DEHUMIDIFIER_THRESHOLD(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_RELATIVE_HUMIDITY_DEHUMIDIFIER_THRESHOLD, \
+    .description = "Relative Humidity Dehumidifier Threshold", \
+    .format = homekit_format_float, \
+    .unit = homekit_unit_percentage, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_paired_write \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {100}, \
+    .min_step = (float[]) {1}, \
+    ##__VA_ARGS__
+
+#define HOMEKIT_CHARACTERISTIC_RELATIVE_HUMIDITY_HUMIDIFIER_THRESHOLD HOMEKIT_APPLE_UUID2("CA")
+#define HOMEKIT_DECLARE_CHARACTERISTIC_RELATIVE_HUMIDITY_HUMIDIFIER_THRESHOLD(_value, ...) \
+    .type = HOMEKIT_CHARACTERISTIC_RELATIVE_HUMIDITY_HUMIDIFIER_THRESHOLD, \
+    .description = "Relative Humidity Humidifier Threshold", \
+    .format = homekit_format_float, \
+    .unit = homekit_unit_percentage, \
+    .permissions = homekit_permissions_paired_read \
+                 | homekit_permissions_paired_write \
+                 | homekit_permissions_notify, \
+    .min_value = (float[]) {0}, \
+    .max_value = (float[]) {100}, \
+    .min_step = (float[]) {1}, \
+    ##__VA_ARGS__
+
 #endif // __HOMEKIT_CHARACTERISTICS__
