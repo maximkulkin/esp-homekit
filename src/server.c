@@ -3119,8 +3119,8 @@ void homekit_setup_mdns(homekit_server_t *server) {
     unique_name[strlen(unique_name)]='-';
     unique_name[strlen(unique_name)]=server->accessory_id[0];
     unique_name[strlen(unique_name)]=server->accessory_id[1];
-    unique_name[strlen(unique_name)]=server->accessory_id[2];
     unique_name[strlen(unique_name)]=server->accessory_id[3];
+    unique_name[strlen(unique_name)]=server->accessory_id[4];
     homekit_mdns_configure_init(unique_name, PORT);
 
     // accessory model name (required)
