@@ -3115,10 +3115,12 @@ void homekit_setup_mdns(homekit_server_t *server) {
     }
 
     char unique_name[65]={0};
-    strncpy(unique_name, name->value.string_value, sizeof(unique_name)-4);
+    strncpy(unique_name, name->value.string_value, sizeof(unique_name)-6);
     unique_name[strlen(unique_name)]='-';
     unique_name[strlen(unique_name)]=server->accessory_id[0];
     unique_name[strlen(unique_name)]=server->accessory_id[1];
+    unique_name[strlen(unique_name)]=server->accessory_id[2];
+    unique_name[strlen(unique_name)]=server->accessory_id[3];
     homekit_mdns_configure_init(unique_name, PORT);
 
     // accessory model name (required)
