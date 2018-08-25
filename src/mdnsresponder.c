@@ -607,11 +607,11 @@ void mdns_add_facility( const char* instanceName,   // Friendly name, need not b
 
     sdk_os_timer_disarm(&mdns_announce_timer);
 
-    vTaskDelay(200); //while waiting for dhcp offer
+    while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) vTaskDelayMs(100);
     mdns_announce();
-    vTaskDelay(100);
+    vTaskDelayMs(1000);
     mdns_announce();
-    vTaskDelay(200);
+    vTaskDelayMs(2000);
     mdns_announce();
 
     sdk_os_timer_setfn(&mdns_announce_timer, mdns_announce, NULL);
