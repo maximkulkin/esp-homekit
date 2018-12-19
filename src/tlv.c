@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "tlv.h"
+#include <homekit/tlv.h>
 
 
 tlv_values_t *tlv_new() {
@@ -75,7 +75,7 @@ tlv_t *tlv_get_value(const tlv_values_t *values, byte type) {
 int tlv_get_integer_value(const tlv_values_t *values, byte type, int def) {
     tlv_t *t = tlv_get_value(values, type);
     if (!t)
-        return 0;
+        return def;
 
     int x = 0;
     for (int i=t->size-1; i>=0; i--) {

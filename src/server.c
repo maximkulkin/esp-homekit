@@ -24,8 +24,8 @@
 #include <http-parser/http_parser.h>
 #include <cJSON.h>
 
+#include "base64.h"
 #include "crypto.h"
-#include "tlv.h"
 #include "pairing.h"
 #include "storage.h"
 #include "query_params.h"
@@ -33,8 +33,9 @@
 #include "debug.h"
 #include "port.h"
 
-#include "homekit/homekit.h"
-#include "homekit/characteristics.h"
+#include <homekit/homekit.h>
+#include <homekit/characteristics.h>
+#include <homekit/tlv.h>
 
 
 #define PORT 5556
@@ -452,7 +453,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
             case homekit_format_int: format_str = "int"; break;
             case homekit_format_float: format_str = "float"; break;
             case homekit_format_string: format_str = "string"; break;
-            case homekit_format_tlv: format_str = "tlv"; break;
+            case homekit_format_tlv: format_str = "tlv8"; break;
             case homekit_format_data: format_str = "data"; break;
         }
         if (format_str) {
@@ -547,7 +548,32 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     json_string(json, "value"); json_string(json, v.string_value);
                     break;
                 }
-                case homekit_format_tlv:
+                case homekit_format_tlv: {
+                    json_string(json, "value");
+                    if (!v.tlv_values) {
+                        json_string(json, "");
+                    } else {
+                        size_t tlv_size = 0;
+                        tlv_format(v.tlv_values, NULL, &tlv_size);
+                        if (tlv_size == 0) {
+                            json_string(json, "");
+                        } else {
+                            byte *tlv_data = malloc(tlv_size);
+                            tlv_format(v.tlv_values, tlv_data, &tlv_size);
+
+                            size_t encoded_tlv_size = base64_encoded_size(tlv_size);
+                            byte *encoded_tlv_data = malloc(encoded_tlv_size + 1);
+                            base64_encode(tlv_data, tlv_size, encoded_tlv_data);
+                            encoded_tlv_data[encoded_tlv_size] = 0;
+
+                            json_string(json, (char*) encoded_tlv_data);
+
+                            free(encoded_tlv_data);
+                            free(tlv_data);
+                        }
+                    }
+                    break;
+                }
                 case homekit_format_data:
                     // TODO:
                     break;
@@ -2309,18 +2335,57 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    h_value = HOMEKIT_STRING(value);
                     if (ch->setter) {
-                        h_value = HOMEKIT_STRING(value);
                         ch->setter(h_value);
                     } else {
                         homekit_value_destruct(&ch->value);
-                        h_value = HOMEKIT_STRING(strdup(value));
-                        ch->value = h_value;
+                        homekit_value_copy(&ch->value, &h_value);
                     }
                     break;
                 }
                 case homekit_format_tlv: {
-                    // TODO:
+                    if (j_value->type != cJSON_String) {
+                        CLIENT_ERROR(context, "Failed to update %d.%d: value is not a string", aid, iid);
+                        return HAPStatus_InvalidValue;
+                    }
+
+                    int max_len = (ch->max_len) ? *ch->max_len : 256;
+
+                    char *value = j_value->valuestring;
+                    size_t value_len = strlen(value);
+                    if (value_len > max_len) {
+                        CLIENT_ERROR(context, "Failed to update %d.%d: value is too long", aid, iid);
+                        return HAPStatus_InvalidValue;
+                    }
+
+                    size_t tlv_size = base64_decoded_size(value_len);
+                    byte *tlv_data = malloc(tlv_size);
+                    if (base64_decode((byte*) value, value_len, tlv_data) < 0) {
+                        free(tlv_data);
+                        CLIENT_ERROR(context, "Failed to update %d.%d: error Base64 decoding", aid, iid);
+                        return HAPStatus_InvalidValue;
+                    }
+
+                    tlv_values_t *tlv_values = tlv_new();
+                    int r = tlv_parse(tlv_data, tlv_size, tlv_values);
+                    free(tlv_data);
+
+                    if (r) {
+                        CLIENT_ERROR(context, "Failed to update %d.%d: error parsing TLV", aid, iid);
+                        return HAPStatus_InvalidValue;
+                    }
+
+                    h_value = HOMEKIT_TLV(tlv_values);
+
+                    if (ch->setter) {
+                        ch->setter(h_value);
+                    } else {
+                        homekit_value_destruct(&ch->value);
+                        homekit_value_copy(&ch->value, &h_value);
+                    }
+
+                    tlv_free(tlv_values);
                     break;
                 }
                 case homekit_format_data: {
