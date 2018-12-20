@@ -45,10 +45,6 @@
 #endif
 
 
-struct _client_context_t;
-typedef struct _client_context_t client_context_t;
-
-
 typedef enum {
     HOMEKIT_ENDPOINT_UNKNOWN = 0,
     HOMEKIT_ENDPOINT_PAIR_SETUP,
@@ -59,6 +55,7 @@ typedef enum {
     HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS,
     HOMEKIT_ENDPOINT_PAIRINGS,
     HOMEKIT_ENDPOINT_RESET,
+    HOMEKIT_ENDPOINT_RESOURCE,
 } homekit_endpoint_t;
 
 
@@ -934,6 +931,19 @@ void send_json_error_response(client_context_t *context, int status_code, HAPSta
     int size = snprintf((char *)buffer, sizeof(buffer), "{\"status\": %d}", status);
 
     send_json_response(context, status_code, buffer, size);
+}
+
+
+unsigned char *homekit_client_get_request_body(client_context_t *context) {
+    return (unsigned char*) context->body;
+}
+
+size_t homekit_client_get_request_body_size(client_context_t *context) {
+    return context->body_length;
+}
+
+void homekit_client_send(client_context_t *context, unsigned char *data, size_t size) {
+    client_send(context, data, size);
 }
 
 
@@ -2751,6 +2761,18 @@ void homekit_server_on_reset(client_context_t *context) {
     homekit_system_restart();
 }
 
+void homekit_server_on_resource(client_context_t *context) {
+    CLIENT_INFO(context, "Resource");
+    DEBUG_HEAP();
+
+    if (!context->server->config->on_resource) {
+        send_404_response(context);
+        return;
+    }
+
+    context->server->config->on_resource(context);
+}
+
 
 int homekit_server_on_url(http_parser *parser, const char *data, size_t length) {
     client_context_t *context = (client_context_t*) parser->data;
@@ -2785,6 +2807,8 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
             context->endpoint = HOMEKIT_ENDPOINT_PAIRINGS;
         } else if (!strncmp(data, "/reset", length)) {
             context->endpoint = HOMEKIT_ENDPOINT_RESET;
+        } else if (!strncmp(data, "/resource", length)) {
+            context->endpoint = HOMEKIT_ENDPOINT_RESOURCE;
         }
     } else if (parser->method == HTTP_PUT) {
         if (!strncmp(data, "/characteristics", length)) {
@@ -2844,6 +2868,10 @@ int homekit_server_on_message_complete(http_parser *parser) {
         }
         case HOMEKIT_ENDPOINT_RESET: {
             homekit_server_on_reset(context);
+            break;
+        }
+        case HOMEKIT_ENDPOINT_RESOURCE: {
+            homekit_server_on_resource(context);
             break;
         }
         case HOMEKIT_ENDPOINT_UNKNOWN: {
