@@ -1128,8 +1128,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             r = crypto_srp_get_proof(context->server->pairing_context->srp, server_proof, &server_proof_size);
 
             tlv_values_t *response = tlv_new();
-            tlv_add_value(response, TLVType_Proof, server_proof, server_proof_size);
             tlv_add_integer_value(response, TLVType_State, 4);
+            tlv_add_value(response, TLVType_Proof, server_proof, server_proof_size);
 
             free(server_proof);
 
@@ -2716,9 +2716,9 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 }
                 r = crypto_ed25519_export_public_key(pairing->device_key, public_key, &public_key_size);
 
-                tlv_add_integer_value(response, TLVType_Permissions, pairing->permissions);
-                tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
                 tlv_add_string_value(response, TLVType_Identifier, pairing->device_id);
+                tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
+                tlv_add_integer_value(response, TLVType_Permissions, pairing->permissions);
 
                 first = false;
 

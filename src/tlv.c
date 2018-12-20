@@ -34,9 +34,17 @@ int tlv_add_value(tlv_values_t *values, byte type, const byte *value, size_t siz
         tlv->value = NULL;
     }
     memcpy(tlv->value, value, size);
+    tlv->next = NULL;
 
-    tlv->next = values->head;
-    values->head = tlv;
+    if (!values->head) {
+        values->head = tlv;
+    } else {
+        tlv_t *t = values->head;
+        while (t->next) {
+            t = t->next;
+        }
+        t->next = tlv;
+    }
 
     return 0;
 }
