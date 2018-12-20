@@ -720,9 +720,11 @@ void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t 
 
 void client_send(client_context_t *context, byte *data, size_t data_size) {
 #if HOMEKIT_DEBUG
-    char *payload = binary_to_string(data, data_size);
-    CLIENT_DEBUG(context, "Sending payload: %s", payload);
-    free(payload);
+    if (data_size < 4096) {
+        char *payload = binary_to_string(data, data_size);
+        CLIENT_DEBUG(context, "Sending payload: %s", payload);
+        free(payload);
+    }
 #endif
 
     if (context->encrypted) {
