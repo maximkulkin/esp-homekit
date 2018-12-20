@@ -68,6 +68,22 @@ int tlv_add_integer_value(tlv_values_t *values, byte type, int value) {
     return tlv_add_value(values, type, data, size);
 }
 
+int tlv_add_tlv_value(tlv_values_t *values, byte type, tlv_values_t *value) {
+    size_t tlv_size = 0;
+    tlv_format(value, NULL, &tlv_size);
+    byte *tlv_data = malloc(tlv_size);
+    int r = tlv_format(value, tlv_data, &tlv_size);
+    if (r) {
+        free(tlv_data);
+        return r;
+    }
+
+    r = tlv_add_value(values, type, tlv_data, tlv_size);
+    free(tlv_data);
+
+    return r;
+}
+
 
 tlv_t *tlv_get_value(const tlv_values_t *values, byte type) {
     tlv_t *t = values->head;
@@ -90,6 +106,23 @@ int tlv_get_integer_value(const tlv_values_t *values, byte type, int def) {
         x = (x << 8) + t->value[i];
     }
     return x;
+}
+
+
+tlv_values_t *tlv_get_tlv_value(const tlv_values_t *values, byte type) {
+    tlv_t *t = tlv_get_value(values, type);
+    if (!t)
+        return NULL;
+
+    tlv_values_t *value = tlv_new();
+    int r = tlv_parse(t->value, t->size, value);
+
+    if (r) {
+        tlv_free(value);
+        return NULL;
+    }
+
+    return value;
 }
 
 

@@ -23,9 +23,11 @@ void tlv_free(tlv_values_t *values);
 int tlv_add_value(tlv_values_t *values, byte type, const byte *value, size_t size);
 int tlv_add_string_value(tlv_values_t *values, byte type, const char *value);
 int tlv_add_integer_value(tlv_values_t *values, byte type, int value);
+int tlv_add_tlv_value(tlv_values_t *values, byte type, tlv_values_t *value);
 
 tlv_t *tlv_get_value(const tlv_values_t *values, byte type);
 int tlv_get_integer_value(const tlv_values_t *values, byte type, int def);
+tlv_values_t *tlv_get_tlv_value(const tlv_values_t *values, byte type);
 
 int tlv_format(const tlv_values_t *values, byte *buffer, size_t *size);
 
