@@ -53,15 +53,11 @@ int tlv_add_string_value(tlv_values_t *values, byte type, const char *value) {
     return tlv_add_value(values, type, (const byte *)value, strlen(value));
 }
 
-int tlv_add_integer_value(tlv_values_t *values, byte type, int value) {
-    byte data[sizeof(value)];
-    size_t size = 1;
+int tlv_add_integer_value(tlv_values_t *values, byte type, size_t size, int value) {
+    byte data[8];
 
-    data[0] = value & 0xff;
-    value >>= 8;
-
-    while (value) {
-        data[size++] = value & 0xff;
+    for (size_t i=0; i<size; i++) {
+        data[i] = value & 0xff;
         value >>= 8;
     }
 

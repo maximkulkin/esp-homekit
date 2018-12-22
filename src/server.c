@@ -815,8 +815,8 @@ void send_tlv_response(client_context_t *context, tlv_values_t *values);
 
 void send_tlv_error_response(client_context_t *context, int state, TLVError error) {
     tlv_values_t *response = tlv_new();
-    tlv_add_integer_value(response, TLVType_State, state);
-    tlv_add_integer_value(response, TLVType_Error, error);
+    tlv_add_integer_value(response, TLVType_State, 1, state);
+    tlv_add_integer_value(response, TLVType_Error, 1, error);
 
     send_tlv_response(context, response);
 }
@@ -1081,7 +1081,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             tlv_values_t *response = tlv_new();
             tlv_add_value(response, TLVType_PublicKey, context->server->pairing_context->public_key, context->server->pairing_context->public_key_size);
             tlv_add_value(response, TLVType_Salt, salt, salt_size);
-            tlv_add_integer_value(response, TLVType_State, 2);
+            tlv_add_integer_value(response, TLVType_State, 1, 2);
 
             free(salt);
 
@@ -1140,7 +1140,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             r = crypto_srp_get_proof(context->server->pairing_context->srp, server_proof, &server_proof_size);
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 4);
+            tlv_add_integer_value(response, TLVType_State, 1, 4);
             tlv_add_value(response, TLVType_Proof, server_proof, server_proof_size);
 
             free(server_proof);
@@ -1465,7 +1465,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 6);
+            tlv_add_integer_value(response, TLVType_State, 1, 6);
             tlv_add_value(response, TLVType_EncryptedData,
                           encrypted_response_data, encrypted_response_data_size);
 
@@ -1689,7 +1689,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 2);
+            tlv_add_integer_value(response, TLVType_State, 1, 2);
             tlv_add_value(response, TLVType_PublicKey,
                           my_key_public, my_key_public_size);
             tlv_add_value(response, TLVType_EncryptedData,
@@ -1907,7 +1907,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 4);
+            tlv_add_integer_value(response, TLVType_State, 1, 4);
 
             send_tlv_response(context, response);
 
@@ -2618,7 +2618,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             crypto_ed25519_free(device_key);
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 2);
+            tlv_add_integer_value(response, TLVType_State, 1, 2);
 
             send_tlv_response(context, response);
 
@@ -2697,7 +2697,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             free(device_identifier);
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 2);
+            tlv_add_integer_value(response, TLVType_State, 1, 2);
 
             send_tlv_response(context, response);
             break;
@@ -2712,7 +2712,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
             }
 
             tlv_values_t *response = tlv_new();
-            tlv_add_integer_value(response, TLVType_State, 2);
+            tlv_add_integer_value(response, TLVType_State, 1, 2);
 
             bool first = true;
 
@@ -2730,7 +2730,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
                 tlv_add_string_value(response, TLVType_Identifier, pairing->device_id);
                 tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
-                tlv_add_integer_value(response, TLVType_Permissions, pairing->permissions);
+                tlv_add_integer_value(response, TLVType_Permissions, 1, pairing->permissions);
 
                 first = false;
 
