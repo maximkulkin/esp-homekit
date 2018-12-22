@@ -23,6 +23,9 @@ typedef struct {
 
     // Callback for "POST /resource" to get snapshot image from camera
     void (*on_resource)(client_context_t *context);
+
+    void (*on_client_connect)(client_context_t *context);
+    void (*on_client_disconnect)(client_context_t *context);
 } homekit_server_config_t;
 
 // Initialize HomeKit accessory server

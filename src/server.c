@@ -1915,6 +1915,9 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             context->permissions = permissions;
             context->encrypted = true;
 
+            if (context->server->config->on_client_connect)
+                context->server->config->on_client_connect(context);
+
             CLIENT_INFO(context, "Verification successful, secure session established");
 
             break;
@@ -3014,6 +3017,9 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
         client_notify_characteristic,
         context
     );
+
+    if (server->config->on_client_disconnect)
+        server->config->on_client_disconnect(context);
 
     client_context_free(context);
 }
