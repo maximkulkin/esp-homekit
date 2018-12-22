@@ -558,7 +558,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                             byte *tlv_data = malloc(tlv_size);
                             tlv_format(v.tlv_values, tlv_data, &tlv_size);
 
-                            size_t encoded_tlv_size = base64_encoded_size(tlv_size);
+                            size_t encoded_tlv_size = base64_encoded_size(tlv_data, tlv_size);
                             byte *encoded_tlv_data = malloc(encoded_tlv_size + 1);
                             base64_encode(tlv_data, tlv_size, encoded_tlv_data);
                             encoded_tlv_data[encoded_tlv_size] = 0;
@@ -2371,7 +2371,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    size_t tlv_size = base64_decoded_size(value_len);
+                    size_t tlv_size = base64_decoded_size((unsigned char*)value, value_len);
                     byte *tlv_data = malloc(tlv_size);
                     if (base64_decode((byte*) value, value_len, tlv_data) < 0) {
                         free(tlv_data);

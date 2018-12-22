@@ -10,9 +10,9 @@ unsigned char base64_decode_char(unsigned char c) {
   if (c >= 'A' && c <= 'Z')
     return c - 'A';
   if (c >= 'a' && c <= 'z')
-    return c - 'a';
+    return c - 'a' + 26;
   if (c >= '0' && c <= '9')
-    return c - '0';
+    return c - '0' + 52;
   if (c == '+')
     return 62;
   if (c == '/')
@@ -23,12 +23,17 @@ unsigned char base64_decode_char(unsigned char c) {
   return 0;
 }
 
-size_t base64_encoded_size(size_t size) {
+size_t base64_encoded_size(const unsigned char *data, size_t size) {
   return (size + 2)/3*4;
 }
 
-size_t base64_decoded_size(size_t encoded_size) {
-  return (encoded_size + 3)/4*3;
+size_t base64_decoded_size(const unsigned char *encoded_data, size_t encoded_size) {
+  size_t size = (encoded_size + 3)/4*3;
+  if (encoded_data[encoded_size-1] == '=')
+      size--;
+  if (encoded_data[encoded_size-2] == '=')
+      size--;
+  return size;
 }
 
 int base64_encode(const unsigned char* data, size_t size, unsigned char *encoded_data) {
