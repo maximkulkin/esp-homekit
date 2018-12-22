@@ -2847,9 +2847,10 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
 
 int homekit_server_on_body(http_parser *parser, const char *data, size_t length) {
     client_context_t *context = parser->data;
-    context->body = realloc(context->body, context->body_length + length);
+    context->body = realloc(context->body, context->body_length + length + 1);
     memcpy(context->body + context->body_length, data, length);
     context->body_length += length;
+    context->body[context->body_length] = 0;
 
     return 0;
 }
