@@ -2207,6 +2207,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with boolean %s", aid, iid, value ? "true" : "false");
+
                     h_value = HOMEKIT_BOOL(value);
                     if (ch->setter) {
                         ch->setter(h_value);
@@ -2303,6 +2305,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                     }
 
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %d", aid, iid, value);
+
                     h_value = HOMEKIT_INT(value);
                     h_value.format = ch->format;
                     if (ch->setter) {
@@ -2325,6 +2329,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with %g", aid, iid, value);
+
                     h_value = HOMEKIT_FLOAT(value);
                     if (ch->setter) {
                         ch->setter(h_value);
@@ -2346,6 +2352,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         CLIENT_ERROR(context, "Failed to update %d.%d: value is too long", aid, iid);
                         return HAPStatus_InvalidValue;
                     }
+
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with \"%s\"", aid, iid, value);
 
                     h_value = HOMEKIT_STRING(value);
                     if (ch->setter) {
@@ -2386,6 +2394,13 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     if (r) {
                         CLIENT_ERROR(context, "Failed to update %d.%d: error parsing TLV", aid, iid);
                         return HAPStatus_InvalidValue;
+                    }
+
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with TLV:", aid, iid);
+                    for (tlv_t *t=tlv_values->head; t; t=t->next) {
+                        char *escaped_payload = binary_to_string(t->value, t->size);
+                        CLIENT_DEBUG(context, "  Type %d value (%d bytes): %s", t->type, t->size, escaped_payload);
+                        free(escaped_payload);
                     }
 
                     h_value = HOMEKIT_TLV(tlv_values);
