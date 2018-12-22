@@ -34,6 +34,12 @@ void homekit_server_init(homekit_server_config_t *config);
 // Reset HomeKit accessory server, removing all pairings
 void homekit_server_reset();
 
+client_context_t *homekit_client_get();
+
+void homekit_client_data_set(client_context_t *context, unsigned int data_id, void *data);
+void *homekit_client_data_get(client_context_t *context, unsigned int data_id);
+void homekit_client_data_delete(client_context_t *context, unsigned int data_id);
+
 unsigned char *homekit_client_get_request_body(client_context_t *context);
 size_t homekit_client_get_request_body_size(client_context_t *context);
 
