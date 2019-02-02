@@ -98,14 +98,6 @@ typedef struct {
 } homekit_server_t;
 
 
-typedef struct _client_context_user_data_t {
-    unsigned int id;
-    void *data;
-
-    struct _client_context_user_data_t *next;
-} client_context_user_data_t;
-
-
 struct _client_context_t {
     homekit_server_t *server;
     int socket;
@@ -136,8 +128,6 @@ struct _client_context_t {
 
     QueueHandle_t event_queue;
     pair_verify_context_t *verify_context;
-
-    client_context_user_data_t *user_data;
 
     struct _client_context_t *next;
 };
@@ -347,8 +337,6 @@ client_context_t *client_context_new() {
     c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t*));
     c->verify_context = NULL;
 
-    c->user_data = NULL;
-
     c->next = NULL;
 
     return c;
@@ -379,19 +367,6 @@ void client_context_free(client_context_t *c) {
 
     if (c->body)
         free(c->body);
-
-    if (c->user_data) {
-        client_context_user_data_t *t = c->user_data;
-        while (t) {
-            client_context_user_data_t *next = t->next;
-
-            if (t->data)
-                free(t->data);
-            free(t);
-
-            t = next;
-        }
-    }
 
     free(c);
 }
@@ -965,86 +940,6 @@ static client_context_t *current_client_context = NULL;
 
 client_context_t *homekit_client_get() {
     return current_client_context;
-}
-
-void homekit_client_data_set(client_context_t *context, unsigned int data_id, void *data) {
-    if (!context)
-        return;
-
-    client_context_user_data_t *t = context->user_data;
-    if (!t) {
-        t = malloc(sizeof(client_context_user_data_t));
-        t->id = data_id;
-        t->data = NULL;
-        t->next = NULL;
-
-        context->user_data = t;
-    } else if (t->id != data_id) {
-        while (t->next) {
-            if (t->next->id == data_id) {
-                break;
-            }
-
-            t = t->next;
-        }
-
-        if (!t->next) {
-            t->next = malloc(sizeof(client_context_user_data_t));
-            t->next->id = data_id;
-            t->next->data = NULL;
-            t->next->next = NULL;
-        }
-
-        t = t->next;
-    }
-
-    if (t->data)
-        free(t->data);
-    t->data = data;
-
-    return;
-}
-
-void *homekit_client_data_get(client_context_t *context, unsigned int data_id) {
-    if (!context)
-        return NULL;
-
-    client_context_user_data_t *t = context->user_data;
-    while (t) {
-        if (t->id == data_id)
-            return t->data;
-
-        t = t->next;
-    }
-
-    return NULL;
-}
-
-void homekit_client_data_delete(client_context_t *context, unsigned int data_id) {
-    if (!context || context->user_data)
-        return;
-
-    client_context_user_data_t *t = context->user_data;
-    if (t->id == data_id) {
-        context->user_data = t->next;
-
-        if (t->data)
-            free(t->data);
-        free(t);
-    } else {
-        while (t->next) {
-            if (t->next->id == data_id) {
-                t->next = t->next->next;
-
-                if (t->data)
-                    free(t->data);
-                free(t);
-                break;
-            }
-
-            t = t->next;
-        }
-    }
 }
 
 
