@@ -48,6 +48,11 @@ struct _client_context_t;
 typedef struct _client_context_t client_context_t;
 
 
+#define HOMEKIT_NOTIFY_EVENT(server, event) \
+  if ((server)->config->on_event) \
+      (server)->config->on_event(event);
+
+
 typedef enum {
     HOMEKIT_ENDPOINT_UNKNOWN = 0,
     HOMEKIT_ENDPOINT_PAIR_SETUP,
@@ -1344,6 +1349,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
             INFO("Added pairing with %s", device_id);
 
+            HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_ADDED);
+
             free(device_id);
 
             crypto_ed25519_free(device_key);
@@ -1928,6 +1935,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             context->permissions = permissions;
             context->encrypted = true;
 
+            HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_CLIENT_VERIFIED);
 
             CLIENT_INFO(context, "Verification successful, secure session established");
 
@@ -2641,6 +2649,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 }
 
                 INFO("Added pairing with %s", device_identifier);
+
+                HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_ADDED);
             }
 
             free(device_identifier);
@@ -2689,6 +2699,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 }
 
                 INFO("Removed pairing with %s", device_identifier);
+
+                HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_REMOVED);
 
                 client_context_t *c = context->server->clients;
                 while (c) {
@@ -3034,6 +3046,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
         context
     );
 
+    HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_CLIENT_DISCONNECTED);
 
     client_context_free(context);
 }
@@ -3078,6 +3091,8 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     server->nfds++;
     if (s > server->max_fd)
         server->max_fd = s;
+
+    HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_CLIENT_CONNECTED);
 
     return context;
 }
@@ -3343,6 +3358,8 @@ void homekit_server_task(void *args) {
 
     homekit_mdns_init();
     homekit_setup_mdns(server);
+
+    HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_SERVER_INITIALIZED);
 
     homekit_run_server(server);
 

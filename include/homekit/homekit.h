@@ -6,6 +6,18 @@
 typedef void *homekit_client_id_t;
 
 
+typedef enum {
+    HOMEKIT_EVENT_SERVER_INITIALIZED,
+    // Just accepted client connection
+    HOMEKIT_EVENT_CLIENT_CONNECTED,
+    // Pairing verification completed and secure session is established
+    HOMEKIT_EVENT_CLIENT_VERIFIED,
+    HOMEKIT_EVENT_CLIENT_DISCONNECTED,
+    HOMEKIT_EVENT_PAIRING_ADDED,
+    HOMEKIT_EVENT_PAIRING_REMOVED,
+} homekit_event_t;
+
+
 typedef struct {
     // Pointer to an array of homekit_accessory_t pointers.
     // Array should be terminated by a NULL pointer.
@@ -23,6 +35,7 @@ typedef struct {
     // Callback for "POST /resource" to get snapshot image from camera
     void (*on_resource)(const char *body, size_t body_size);
 
+    void (*on_event)(homekit_event_t event);
 } homekit_server_config_t;
 
 // Initialize HomeKit accessory server
