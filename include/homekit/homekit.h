@@ -44,6 +44,8 @@ void homekit_server_init(homekit_server_config_t *config);
 // Reset HomeKit accessory server, removing all pairings
 void homekit_server_reset();
 
+bool homekit_is_paired();
+
 // Client related stuff
 homekit_client_id_t homekit_get_client_id();
 

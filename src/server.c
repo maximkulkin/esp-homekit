@@ -3404,3 +3404,23 @@ void homekit_server_init(homekit_server_config_t *config) {
 void homekit_server_reset() {
     homekit_storage_reset();
 }
+
+bool homekit_is_paired() {
+    pairing_iterator_t *pairing_it = homekit_storage_pairing_iterator();
+    pairing_t *pairing;
+    while ((pairing = homekit_storage_next_pairing(pairing_it))) {
+        if (pairing->permissions & pairing_permissions_admin) {
+            break;
+        }
+        pairing_free(pairing);
+    };
+    homekit_storage_pairing_iterator_free(pairing_it);
+
+    bool paired = false;
+    if (pairing) {
+        paired = true;
+        pairing_free(pairing);
+    }
+
+    return paired;
+}
