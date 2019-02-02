@@ -44,6 +44,9 @@
 #define HOMEKIT_MAX_CLIENTS 16
 #endif
 
+struct _client_context_t;
+typedef struct _client_context_t client_context_t;
+
 
 typedef enum {
     HOMEKIT_ENDPOINT_UNKNOWN = 0,
@@ -938,21 +941,24 @@ void send_json_error_response(client_context_t *context, int status_code, HAPSta
 
 static client_context_t *current_client_context = NULL;
 
-client_context_t *homekit_client_get() {
-    return current_client_context;
+homekit_client_id_t homekit_get_client_id() {
+    return (homekit_client_id_t)current_client_context;
 }
 
+bool homekit_client_is_admin() {
+    if (!current_client_context)
+        return false;
 
-unsigned char *homekit_client_get_request_body(client_context_t *context) {
-    return (unsigned char*) context->body;
+    return current_client_context->permissions & pairing_permissions_admin;
 }
 
-size_t homekit_client_get_request_body_size(client_context_t *context) {
-    return context->body_length;
-}
+int homekit_client_send(unsigned char *data, size_t size) {
+    if (!current_client_context)
+        return -1;
 
-void homekit_client_send(client_context_t *context, unsigned char *data, size_t size) {
-    client_send(context, data, size);
+    client_send(current_client_context, data, size);
+
+    return 0;
 }
 
 
@@ -1922,8 +1928,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             context->permissions = permissions;
             context->encrypted = true;
 
-            if (context->server->config->on_client_connect)
-                context->server->config->on_client_connect(context);
 
             CLIENT_INFO(context, "Verification successful, secure session established");
 
@@ -2797,7 +2801,7 @@ void homekit_server_on_resource(client_context_t *context) {
         return;
     }
 
-    context->server->config->on_resource(context);
+    context->server->config->on_resource(context->body, context->body_length);
 }
 
 
@@ -3030,8 +3034,6 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
         context
     );
 
-    if (server->config->on_client_disconnect)
-        server->config->on_client_disconnect(context);
 
     client_context_free(context);
 }

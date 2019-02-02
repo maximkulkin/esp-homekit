@@ -3,8 +3,7 @@
 
 #include <homekit/types.h>
 
-struct _client_context_t;
-typedef struct _client_context_t client_context_t;
+typedef void *homekit_client_id_t;
 
 
 typedef struct {
@@ -22,10 +21,8 @@ typedef struct {
     void (*password_callback)(const char *password);
 
     // Callback for "POST /resource" to get snapshot image from camera
-    void (*on_resource)(client_context_t *context);
+    void (*on_resource)(const char *body, size_t body_size);
 
-    void (*on_client_connect)(client_context_t *context);
-    void (*on_client_disconnect)(client_context_t *context);
 } homekit_server_config_t;
 
 // Initialize HomeKit accessory server
@@ -34,12 +31,10 @@ void homekit_server_init(homekit_server_config_t *config);
 // Reset HomeKit accessory server, removing all pairings
 void homekit_server_reset();
 
-client_context_t *homekit_client_get();
+// Client related stuff
+homekit_client_id_t homekit_get_client_id();
 
-
-unsigned char *homekit_client_get_request_body(client_context_t *context);
-size_t homekit_client_get_request_body_size(client_context_t *context);
-
-void homekit_client_send(client_context_t *context, unsigned char *data, size_t size);
+bool homekit_client_is_admin();
+int  homekit_client_send(unsigned char *data, size_t size);
 
 #endif // __HOMEKIT_H__
