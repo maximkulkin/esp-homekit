@@ -3424,3 +3424,18 @@ bool homekit_is_paired() {
 
     return paired;
 }
+
+int homekit_get_accessory_id(char *buffer, size_t size) {
+    char *accessory_id = homekit_storage_load_accessory_id();
+    if (!accessory_id)
+        return -2;
+
+    if (size < strlen(accessory_id) + 1)
+        return -1;
+
+    strncpy(buffer, accessory_id, size);
+
+    free(accessory_id);
+
+    return 0;
+}
