@@ -2725,10 +2725,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
                     if (!pairing) {
                         // No admins left, enable pairing again
-                        INFO("Last admin pairing was removed, enabling pair setup");
-
-                        context->server->paired = false;
-                        homekit_setup_mdns(context->server);
+                        INFO("Last admin pairing was removed, resetting accessory");
+                        homekit_server_on_reset(context);
                     } else {
                         pairing_free(pairing);
                     }
