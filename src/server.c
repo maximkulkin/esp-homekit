@@ -23,6 +23,8 @@
 
 #include <http-parser/http_parser.h>
 #include <cJSON.h>
+#include <wolfssl/wolfcrypt/hash.h>
+#include <wolfssl/wolfcrypt/coding.h>
 
 #include "base64.h"
 #include "crypto.h"
@@ -3292,6 +3294,28 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // accessory category identifier
     homekit_mdns_add_txt("ci", "%d", accessory->category);
 
+    if (server->config->setupId) {
+        DEBUG("Accessory Setup ID = %s", server->config->setupId);
+
+        size_t data_size = strlen(server->config->setupId) + strlen(server->accessory_id) + 1;
+        char *data = malloc(data_size);
+        snprintf(data, data_size, "%s%s", server->config->setupId, server->accessory_id);
+        data[data_size-1] = 0;
+
+        unsigned char shaHash[SHA512_DIGEST_SIZE];
+        wc_Sha512Hash((const unsigned char *)data, data_size-1, shaHash);
+
+        free(data);
+
+        unsigned char encodedHash[9];
+        memset(encodedHash, 0, sizeof(encodedHash));
+
+        word32 len = sizeof(encodedHash);
+        Base64_Encode_NoNl((const unsigned char *)shaHash, 4, encodedHash, &len);
+
+        homekit_mdns_add_txt("sh", "%s", encodedHash);
+    }
+
     homekit_mdns_configure_finalize();
 }
 
@@ -3367,6 +3391,7 @@ void homekit_server_task(void *args) {
 }
 
 #define ISDIGIT(x) isdigit((unsigned char)(x))
+#define ISBASE36(x) (isdigit((unsigned char)(x)) || (x >= 'A' && x <= 'Z'))
 
 void homekit_server_init(homekit_server_config_t *config) {
     if (!config->accessories) {
@@ -3389,6 +3414,16 @@ void homekit_server_init(homekit_server_config_t *config) {
                     ISDIGIT(p[7]) && ISDIGIT(p[8]) && ISDIGIT(p[9]))) {
             ERROR("Error initializing HomeKit accessory server: "
                   "invalid password format");
+            return;
+        }
+    }
+
+    if (config->setupId) {
+        const char *p = config->setupId;
+        if (strlen(p) != 4 ||
+                !(ISBASE36(p[0]) && ISBASE36(p[1]) && ISBASE36(p[2]) && ISBASE36(p[3]))) {
+            ERROR("Error initializing HomeKit accessory server: "
+                  "invalid setup ID format");
             return;
         }
     }

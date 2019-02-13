@@ -32,6 +32,7 @@ typedef struct {
     char *password;
     void (*password_callback)(const char *password);
 
+    char *setupId;
     // Callback for "POST /resource" to get snapshot image from camera
     void (*on_resource)(const char *body, size_t body_size);
 
