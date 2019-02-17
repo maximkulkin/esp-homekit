@@ -23,6 +23,10 @@ typedef struct {
     // Array should be terminated by a NULL pointer.
     homekit_accessory_t **accessories;
 
+    homekit_accessory_category_t category;
+
+    int config_number;
+
     // Password in format "111-23-456".
     // If password is not specified, a random password
     // will be used. In that case, a password_callback
@@ -32,7 +36,10 @@ typedef struct {
     char *password;
     void (*password_callback)(const char *password);
 
+    // Setup ID in format "XXXX" (where X is digit or latin capital letter)
+    // Used for pairing using QR code
     char *setupId;
+
     // Callback for "POST /resource" to get snapshot image from camera
     void (*on_resource)(const char *body, size_t body_size);
 

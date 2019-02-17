@@ -3277,7 +3277,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // should be in format XX:XX:XX:XX:XX:XX, otherwise devices will ignore it
     homekit_mdns_add_txt("id", "%s", server->accessory_id);
     // current configuration number (required)
-    homekit_mdns_add_txt("c#", "%d", accessory->config_number);
+    homekit_mdns_add_txt("c#", "%d", server->config->config_number);
     // current state number (required)
     homekit_mdns_add_txt("s#", "1");
     // feature flags (required if non-zero)
@@ -3291,7 +3291,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     //   bits 3-7 - reserved
     homekit_mdns_add_txt("sf", "%d", (server->paired) ? 0 : 1);
     // accessory category identifier
-    homekit_mdns_add_txt("ci", "%d", accessory->category);
+    homekit_mdns_add_txt("ci", "%d", server->config->category);
 
     if (server->config->setupId) {
         DEBUG("Accessory Setup ID = %s", server->config->setupId);
@@ -3428,6 +3428,17 @@ void homekit_server_init(homekit_server_config_t *config) {
     }
 
     homekit_accessories_init(config->accessories);
+
+    if (!config->config_number) {
+        config->config_number = config->accessories[0]->config_number;
+        if (!config->config_number) {
+            config->config_number = 1;
+        }
+    }
+
+    if (!config->category) {
+        config->category = config->accessories[0]->category;
+    }
 
     homekit_server_t *server = server_new();
     server->config = config;
