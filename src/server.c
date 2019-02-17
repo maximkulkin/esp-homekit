@@ -527,7 +527,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     }
 
     if (ch->permissions & homekit_permissions_paired_read) {
-        homekit_value_t v = value ? *value : (ch->getter ? ch->getter() : ch->value);
+        homekit_value_t v = value ? *value : ch->getter_ex ? ch->getter_ex(ch) : ch->value;
 
         if (v.is_null) {
             // json_string(json, "value"); json_null(json);
@@ -587,7 +587,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
             }
         }
 
-        if (!value && ch->getter) {
+        if (!value && ch->getter_ex) {
             // called getter to get value, need to free it
             homekit_value_destruct(&v);
         }
@@ -999,8 +999,8 @@ void homekit_server_on_identify(client_context_t *context) {
         return;
     }
 
-    if (ch_identify->setter) {
-        ch_identify->setter(HOMEKIT_BOOL(true));
+    if (ch_identify->setter_ex) {
+        ch_identify->setter_ex(ch_identify, HOMEKIT_BOOL(true));
     }
 }
 
@@ -2234,8 +2234,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_DEBUG(context, "Updating characteristic %d.%d with boolean %s", aid, iid, value ? "true" : "false");
 
                     h_value = HOMEKIT_BOOL(value);
-                    if (ch->setter) {
-                        ch->setter(h_value);
+                    if (ch->setter_ex) {
+                        ch->setter_ex(ch, h_value);
                     } else {
                         ch->value = h_value;
                     }
@@ -2333,8 +2333,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
                     h_value = HOMEKIT_INT(value);
                     h_value.format = ch->format;
-                    if (ch->setter) {
-                        ch->setter(h_value);
+                    if (ch->setter_ex) {
+                        ch->setter_ex(ch, h_value);
                     } else {
                         ch->value = h_value;
                     }
@@ -2356,8 +2356,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_DEBUG(context, "Updating characteristic %d.%d with %g", aid, iid, value);
 
                     h_value = HOMEKIT_FLOAT(value);
-                    if (ch->setter) {
-                        ch->setter(h_value);
+                    if (ch->setter_ex) {
+                        ch->setter_ex(ch, h_value);
                     } else {
                         ch->value = h_value;
                     }
@@ -2380,8 +2380,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_DEBUG(context, "Updating characteristic %d.%d with \"%s\"", aid, iid, value);
 
                     h_value = HOMEKIT_STRING(value);
-                    if (ch->setter) {
-                        ch->setter(h_value);
+                    if (ch->setter_ex) {
+                        ch->setter_ex(ch, h_value);
                     } else {
                         homekit_value_destruct(&ch->value);
                         homekit_value_copy(&ch->value, &h_value);
@@ -2428,9 +2428,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     }
 
                     h_value = HOMEKIT_TLV(tlv_values);
-
-                    if (ch->setter) {
-                        ch->setter(h_value);
+                    if (ch->setter_ex) {
+                        ch->setter_ex(ch, h_value);
                     } else {
                         homekit_value_destruct(&ch->value);
                         homekit_value_copy(&ch->value, &h_value);
