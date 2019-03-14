@@ -426,8 +426,9 @@ static ETSTimer mdns_announce_timer;
 
 void mdns_clear() {
     sdk_os_timer_disarm(&mdns_announce_timer);
-    
-    xSemaphoreTake(gDictMutex, portMAX_DELAY);
+
+    if (!xSemaphoreTake(gDictMutex, portMAX_DELAY))
+        return;
 
     mdns_rsrc *rsrc = gDictP;
     gDictP = NULL;
@@ -485,10 +486,11 @@ static void mdns_add_response(const char* vKey, u16_t vType, u32_t ttl, const vo
         memcpy(rsrcP->rData, vKey, keyLen);
         memcpy(&rsrcP->rData[keyLen], dataP, vDataSize);
 
-        xSemaphoreTake(gDictMutex, portMAX_DELAY);
-        rsrcP->rNext = gDictP;
-        gDictP = rsrcP;
-        xSemaphoreGive(gDictMutex);
+        if (xSemaphoreTake(gDictMutex, portMAX_DELAY)) {
+            rsrcP->rNext = gDictP;
+            gDictP = rsrcP;
+            xSemaphoreGive(gDictMutex);
+        }
 
 #ifdef qDebugLog
         printf("mDNS added RR '%s' %s, %d bytes\n", vKey, mdns_qrtype(vType), vDataSize);
@@ -951,12 +953,15 @@ void mdns_init()
         return;
     }
 
+    LOCK_TCPIP_CORE();
+
     // Start IGMP on the netif for our interface: this isn't done for us
     if (!(netif->flags & NETIF_FLAG_IGMP)) {
         netif->flags |= NETIF_FLAG_IGMP;
         err = igmp_start(netif);
         if (err != ERR_OK) {
             printf(">>> mDNS_init: igmp_start on %c%c failed %d\n", netif->name[0], netif->name[1],err);
+            UNLOCK_TCPIP_CORE();
             return;
         }
     }
@@ -964,6 +969,7 @@ void mdns_init()
     gDictMutex = xSemaphoreCreateBinary();
     if (!gDictMutex) {
         printf(">>> mDNS_init: failed to initialize mutex\n");
+        UNLOCK_TCPIP_CORE();
         return;
     }
     xSemaphoreGive(gDictMutex);
@@ -971,27 +977,33 @@ void mdns_init()
     gMDNS_pcb = udp_new_ip_type(IPADDR_TYPE_ANY);
     if (!gMDNS_pcb) {
         printf(">>> mDNS_init: udp_new failed\n");
+        UNLOCK_TCPIP_CORE();
         return;
     }
 
     if ((err = igmp_joingroup_netif(netif, ip_2_ip4(&gMulticastV4Addr))) != ERR_OK) {
         printf(">>> mDNS_init: igmp_join failed %d\n",err);
+        UNLOCK_TCPIP_CORE();
         return;
     }
 
 #if LWIP_IPV6
     if ((err = mld6_joingroup_netif(netif, ip_2_ip6(&gMulticastV6Addr))) != ERR_OK) {
         printf(">>> mDNS_init: igmp_join failed %d\n",err);
+        UNLOCK_TCPIP_CORE();
         return;
     }
 #endif
 
     if ((err = udp_bind(gMDNS_pcb, IP_ANY_TYPE, LWIP_IANA_PORT_MDNS)) != ERR_OK) {
         printf(">>> mDNS_init: udp_bind failed %d\n",err);
+        UNLOCK_TCPIP_CORE();
         return;
     }
 
     udp_bind_netif(gMDNS_pcb, netif);
 
     udp_recv(gMDNS_pcb, mdns_recv, NULL);
+
+    UNLOCK_TCPIP_CORE();
 }
