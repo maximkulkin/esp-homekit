@@ -3024,7 +3024,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     // TODO: recalc server->max_fd ?
     server->nfds--;
 
-    lwip_close(context->socket);
+    close(context->socket);
 
     if (context->server->pairing_context && context->server->pairing_context->client == context) {
         pairing_context_free(context->server->pairing_context);
@@ -3060,7 +3060,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     if (server->nfds > HOMEKIT_MAX_CLIENTS) {
         INFO("No more room for client connections (max %d)", HOMEKIT_MAX_CLIENTS);
-        lwip_close(s);
+        close(s);
         return NULL;
     }
 
