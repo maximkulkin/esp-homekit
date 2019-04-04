@@ -46,6 +46,10 @@ typedef struct {
     void (*on_event)(homekit_event_t event);
 } homekit_server_config_t;
 
+// Get pairing URI
+int homekit_get_setup_uri(const homekit_server_config_t *config,
+                          char *buffer, size_t buffer_size);
+
 // Initialize HomeKit accessory server
 void homekit_server_init(homekit_server_config_t *config);
 

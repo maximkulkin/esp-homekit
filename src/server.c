@@ -3488,3 +3488,55 @@ int homekit_get_accessory_id(char *buffer, size_t size) {
 
     return 0;
 }
+
+int homekit_get_setup_uri(const homekit_server_config_t *config, char *buffer, size_t buffer_size) {
+    static const char base36Table[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    if (buffer_size < 20)
+        return -1;
+
+    if (!config->password)
+        return -1;
+    // TODO: validate password in case it is run beffore server is started
+
+    if (!config->setupId)
+        return -1;
+    // TODO: validate setupID in case it is run beffore server is started
+
+    homekit_accessory_t *accessory = homekit_accessory_by_id(config->accessories, 1);
+    if (!accessory)
+        return -1;
+
+    uint32_t setup_code = 0;
+    for (const char *s = config->password; *s; s++)
+        if ISDIGIT(*s)
+            setup_code = setup_code * 10 + *s - '0';
+
+    uint64_t payload = 0;
+
+    payload <<= 4;  // reserved 4 bits
+
+    payload <<= 8;
+    payload |= accessory->category & 0xff;
+
+    payload <<= 4;
+    payload |= 2;  // flags (2=IP, 4=BLE, 8=IP_WAC)
+
+    payload <<= 27;
+    payload |= setup_code & 0x7fffffff;
+
+    strcpy(buffer, "X-HM://");
+    buffer += 7;
+    for (int i=8; i >= 0; i--) {
+        buffer[i] = base36Table[payload % 36];
+        payload /= 36;
+    }
+    buffer += 9;
+
+    strcpy(buffer, config->setupId);
+    buffer += 4;
+
+    buffer[0] = 0;
+
+    return 0;
+}
