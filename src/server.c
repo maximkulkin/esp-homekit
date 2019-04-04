@@ -637,7 +637,7 @@ int client_send_encrypted(
 
         payload_offset += chunk_size;
 
-        lwip_write(context->socket, encrypted, available + 2);
+        write(context->socket, encrypted, available + 2);
     }
 
     return 0;
@@ -744,7 +744,7 @@ void client_send(client_context_t *context, byte *data, size_t data_size) {
             return;
         }
     } else {
-        lwip_write(context->socket, data, data_size);
+        write(context->socket, data, data_size);
     }
 }
 
@@ -2949,7 +2949,7 @@ static http_parser_settings homekit_http_parser_settings = {
 
 
 static void homekit_client_process(client_context_t *context) {
-    int data_len = lwip_read(
+    int data_len = read(
         context->socket,
         context->data+context->data_available,
         context->data_size-context->data_available
@@ -3024,7 +3024,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     // TODO: recalc server->max_fd ?
     server->nfds--;
 
-    lwip_close(context->socket);
+    close(context->socket);
 
     if (context->server->pairing_context && context->server->pairing_context->client == context) {
         pairing_context_free(context->server->pairing_context);
@@ -3060,7 +3060,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     if (server->nfds > HOMEKIT_MAX_CLIENTS) {
         INFO("No more room for client connections (max %d)", HOMEKIT_MAX_CLIENTS);
-        lwip_close(s);
+        close(s);
         return NULL;
     }
 
