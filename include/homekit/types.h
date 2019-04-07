@@ -214,7 +214,8 @@ struct _homekit_service {
     const char *type;
     bool hidden;
     bool primary;
-    // linked
+
+    homekit_service_t **linked;
     homekit_characteristic_t **characteristics;
 };
 
@@ -236,6 +237,9 @@ struct _homekit_accessory {
 
 #define HOMEKIT_SERVICE(_type, ...) \
     &(homekit_service_t) { .type=HOMEKIT_SERVICE_ ## _type, ##__VA_ARGS__ }
+
+#define HOMEKIT_SERVICE_(_type, ...) \
+    { .type=HOMEKIT_SERVICE_ ## _type, ##__VA_ARGS__ }
 
 #define HOMEKIT_CHARACTERISTIC(name, ...) \
     &(homekit_characteristic_t) { \

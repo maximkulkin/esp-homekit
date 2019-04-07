@@ -1984,9 +1984,13 @@ void homekit_server_on_get_accessories(client_context_t *context) {
             json_string(json, "type"); json_string(json, service->type);
             json_string(json, "hidden"); json_boolean(json, service->hidden);
             json_string(json, "primary"); json_boolean(json, service->primary);
-            // json_string(json, "linked"); json_array_start(json);
-            // TODO: linked services
-            // json_array_end(json);
+            if (service->linked) {
+                json_string(json, "linked"); json_array_start(json);
+                for (homekit_service_t **linked=service->linked; *linked; linked++) {
+                    json_integer(json, (*linked)->id);
+                }
+                json_array_end(json);
+            }
 
             json_string(json, "characteristics"); json_array_start(json);
 
