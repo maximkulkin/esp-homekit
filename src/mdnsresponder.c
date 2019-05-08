@@ -45,6 +45,10 @@
 // #define qLogIncoming          // Log all arriving multicast packets
 // #define qLogAllTraffic        // Log and decode all mDNS packets
 
+#ifndef HOMEKIT_MDNS_NETWORK_CHECK_PERIOD
+#define HOMEKIT_MDNS_NETWORK_CHECK_PERIOD 2000
+#endif
+
 //-------------------------------------------------------------------
 
 #ifdef PACK_STRUCT_USE_INCLUDES
@@ -422,10 +426,15 @@ static u8_t* mdns_get_question(u8_t* hdrP, u8_t* qp, char* qStr, uint16_t* qClas
 //---------------------------------------------------------------------------
 static void mdns_announce_netif(struct netif *netif, const ip_addr_t *addr);
 
-static ETSTimer mdns_announce_timer;
+static ETSTimer announce_timer;
+
+static bool network_down = true;
+static ETSTimer network_monitor_timer;
+
 
 void mdns_clear() {
-    sdk_os_timer_disarm(&mdns_announce_timer);
+    sdk_os_timer_disarm(&announce_timer);
+    sdk_os_timer_disarm(&network_monitor_timer);
 
     if (!xSemaphoreTake(gDictMutex, portMAX_DELAY))
         return;
@@ -607,17 +616,11 @@ void mdns_add_facility( const char* instanceName,   // Friendly name, need not b
     free(fullName);
     free(devName);
 
-    sdk_os_timer_disarm(&mdns_announce_timer);
+    if (sdk_wifi_station_get_connect_status() == STATION_GOT_IP)
+        mdns_announce();
 
-    while (sdk_wifi_station_get_connect_status() != STATION_GOT_IP) vTaskDelayMs(100);
-    mdns_announce();
-    vTaskDelayMs(1000);
-    mdns_announce();
-    vTaskDelayMs(2000);
-    mdns_announce();
-
-    sdk_os_timer_setfn(&mdns_announce_timer, mdns_announce, NULL);
-    sdk_os_timer_arm(&mdns_announce_timer, ttl * 1000, 1);
+    sdk_os_timer_arm(&announce_timer, ttl * 1000, 1);
+    sdk_os_timer_arm(&network_monitor_timer, HOMEKIT_MDNS_NETWORK_CHECK_PERIOD, 1);
 }
 
 static mdns_rsrc* mdns_match(const char* qstr, u16_t qType)
@@ -942,9 +945,23 @@ static void mdns_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_a
     pbuf_free(p);
 }
 
+static void mdns_check_network() {
+    if (sdk_wifi_station_get_connect_status() == STATION_GOT_IP) {
+        if (network_down) {
+            network_down = false;
+            mdns_announce();
+        }
+    } else {
+        network_down = true;
+    }
+}
+
 // If we are in station mode and have an IP address, start a multicast UDP receive
 void mdns_init()
 {
+    sdk_os_timer_setfn(&announce_timer, mdns_announce, NULL);
+    sdk_os_timer_setfn(&network_monitor_timer, mdns_check_network, NULL);
+
     err_t err;
 
     struct netif *netif = sdk_system_get_netif(STATION_IF);
