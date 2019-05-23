@@ -228,6 +228,7 @@ struct _homekit_accessory {
     homekit_service_t **services;
 };
 
+// Macro to define accessory
 #define HOMEKIT_ACCESSORY(...) \
     &(homekit_accessory_t) { \
         .config_number=1, \
@@ -235,23 +236,42 @@ struct _homekit_accessory {
         ##__VA_ARGS__ \
     }
 
+// Macro to define service inside accessory definition.
+// Requires HOMEKIT_SERVICE_<name> define to expand to service type UUID string
 #define HOMEKIT_SERVICE(_type, ...) \
     &(homekit_service_t) { .type=HOMEKIT_SERVICE_ ## _type, ##__VA_ARGS__ }
 
+// Macro to define standalone service (outside of accessory definition)
+// Requires HOMEKIT_SERVICE_<name> define to expand to service type UUID string
 #define HOMEKIT_SERVICE_(_type, ...) \
     { .type=HOMEKIT_SERVICE_ ## _type, ##__VA_ARGS__ }
 
+// Macro to define characteristic inside service definition
 #define HOMEKIT_CHARACTERISTIC(name, ...) \
     &(homekit_characteristic_t) { \
         HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
     }
 
+// Macro to define standalone characteristic (outside of service definition)
+// Requires HOMEKIT_DECLARE_CHARACTERISTIC_<name>() macro
 #define HOMEKIT_CHARACTERISTIC_(name, ...) \
     { \
         HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
     }
 
-
+// Declaration macro to create a custom characteristic inplace without
+// having to define HOMKIT_DECLARE_CHARACTERISTIC_<name>() macro.
+//
+// Useage:
+//     homekit_characteristic_t custom_ch = HOMEKIT_CHARACTERISTIC_(
+//         CUSTOM,
+//         .type = "00000023-0000-1000-8000-0026BB765291",
+//         .description = "My custom characteristic",
+//         .format = homekit_format_string,
+//         .permissions = homekit_permissions_paired_read
+//                      | homekit_permissions_paired_write,
+//         .value = HOMEKIT_STRING_("my value"),
+//     );
 #define HOMEKIT_DECLARE_CHARACTERISTIC_CUSTOM(...) \
     .format = homekit_format_uint8, \
     .unit = homekit_unit_none, \
@@ -289,10 +309,17 @@ homekit_characteristic_t *homekit_characteristic_clone(homekit_characteristic_t 
     homekit_characteristic_clone(HOMEKIT_CHARACTERISTIC(name, ## __VA_ARGS__))
 
 
+// Init accessories by automatically assigning IDs to all
+// accessories/services/characteristics, normalizing internal data.
 void homekit_accessories_init(homekit_accessory_t **accessories);
+
+// Find accessory by ID. Returns NULL if not found
 homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid);
+// Find service inside accessory by service type. Returns NULL if not found
 homekit_service_t *homekit_service_by_type(homekit_accessory_t *accessory, const char *type);
+// Find characteristic inside service by type. Returns NULL if not found
 homekit_characteristic_t *homekit_service_characteristic_by_type(homekit_service_t *service, const char *type);
+// Find characteristic by accessory ID and characteristic ID. Returns NULL if not found
 homekit_characteristic_t *homekit_characteristic_by_aid_and_iid(homekit_accessory_t **accessories, int aid, int iid);
 
 void homekit_characteristic_notify(homekit_characteristic_t *ch, const homekit_value_t value);
