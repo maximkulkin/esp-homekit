@@ -259,6 +259,35 @@ struct _homekit_accessory {
     ##__VA_ARGS__
 
 
+// Allocate memory and copy given accessory
+// Does not make copies of all accessory services, so make sure thay are
+// either allocated on heap or in static memory (but not on stack).
+homekit_accessory_t *homekit_accessory_clone(homekit_accessory_t *accessory);
+// Allocate memory and copy given service.
+// Does not make copies of all service characteristics, so make sure that are
+// either allocated on heap or in static memory (but not on stack).
+homekit_service_t *homekit_service_clone(homekit_service_t *service);
+// Allocate memory and copy given characteristic.
+homekit_characteristic_t *homekit_characteristic_clone(homekit_characteristic_t *characteristic);
+
+
+// Macro to define an accessory in dynamic memory.
+// Used to aid creating accessories definitions in runtime.
+// Makes copy of all internal services/characteristics.
+#define NEW_HOMEKIT_ACCESSORY(...) \
+    homekit_accessory_clone(HOMEKIT_ACCESSORY(__VA_ARGS__))
+
+// Macro to define an service in dynamic memory.
+// Used to aid creating services definitions in runtime.
+// Makes copy of all internal characteristics.
+#define NEW_HOMEKIT_SERVICE(name, ...) \
+    homekit_service_clone(HOMEKIT_SERVICE(name, ## __VA_ARGS__))
+
+// Macro to define an characteristic in dynamic memory.
+// Used to aid creating characteristics definitions in runtime.
+#define NEW_HOMEKIT_CHARACTERISTIC(name, ...) \
+    homekit_characteristic_clone(HOMEKIT_CHARACTERISTIC(name, ## __VA_ARGS__))
+
 
 void homekit_accessories_init(homekit_accessory_t **accessories);
 homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid);
