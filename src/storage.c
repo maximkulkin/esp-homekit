@@ -5,6 +5,8 @@
 #include "pairing.h"
 #include "port.h"
 
+#pragma GCC diagnostic ignored "-Wunused-value"
+
 #ifndef SPIFLASH_BASE_ADDR
 #define SPIFLASH_BASE_ADDR 0x200000
 #endif
@@ -53,7 +55,7 @@ int homekit_storage_init() {
             return -1;
         }
 
-        strncpy(magic, magic1, sizeof(magic1));
+        strncpy(magic, magic1, sizeof(magic));
         if (!spiflash_write(MAGIC_ADDR, (byte *)magic, sizeof(magic))) {
             ERROR("Failed to initialize flash");
             return -1;
@@ -230,7 +232,7 @@ int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device
     pairing_data_t data;
 
     memset(&data, 0, sizeof(data));
-    strncpy(data.magic, magic1, sizeof(magic1));
+    strncpy(data.magic, magic1, sizeof(data.magic));
     data.permissions = permissions;
     strncpy(data.device_id, device_id, sizeof(data.device_id));
     size_t device_public_key_size = sizeof(data.device_public_key);
@@ -255,7 +257,7 @@ int homekit_storage_update_pairing(const char *device_id, byte permissions) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(magic1)))
+        if (strncmp(data.magic, magic1, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
@@ -292,7 +294,7 @@ int homekit_storage_remove_pairing(const char *device_id) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(magic1)))
+        if (strncmp(data.magic, magic1, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
@@ -313,7 +315,7 @@ pairing_t *homekit_storage_find_pairing(const char *device_id) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(magic1)))
+        if (strncmp(data.magic, magic1, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
@@ -361,7 +363,7 @@ pairing_t *homekit_storage_next_pairing(pairing_iterator_t *it) {
         int id = it->idx++;
 
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*id, (byte *)&data, sizeof(data));
-        if (!strncmp(data.magic, magic1, sizeof(magic1))) {
+        if (!strncmp(data.magic, magic1, sizeof(data.magic))) {
             ed25519_key *device_key = crypto_ed25519_new();
             int r = crypto_ed25519_import_public_key(device_key, data.device_public_key, sizeof(data.device_public_key));
             if (r) {
