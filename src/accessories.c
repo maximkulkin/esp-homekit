@@ -168,6 +168,13 @@ homekit_characteristic_t* homekit_characteristic_clone(homekit_characteristic_t*
         size += align_size(sizeof(uint8_t) * ch->valid_values.count);
     if (ch->valid_values_ranges.count)
         size += align_size(sizeof(homekit_valid_values_range_t) * ch->valid_values_ranges.count);
+    if (ch->callback) {
+        homekit_characteristic_change_callback_t *c = ch->callback;
+        while (c) {
+            size += align_size(sizeof(homekit_characteristic_change_callback_t));
+            c = c->next;
+        }
+    }
 
     uint8_t* p = calloc(1, size);
 
@@ -243,9 +250,28 @@ homekit_characteristic_t* homekit_characteristic_clone(homekit_characteristic_t*
         p += align_size(sizeof(homekit_valid_values_range_t*) * c);
     }
 
+    if (ch->callback) {
+        int c = 1;
+        homekit_characteristic_change_callback_t *callback_in = ch->callback;
+        clone->callback = (homekit_characteristic_change_callback_t*)p;
+
+        homekit_characteristic_change_callback_t *callback_out = clone->callback;
+        memcpy(callback_out, callback_in, sizeof(*callback_out));
+
+        while (callback_in->next) {
+            callback_in = callback_in->next;
+            callback_out->next = callback_out + 1;
+            callback_out = callback_out->next;
+            memcpy(callback_out, callback_in, sizeof(*callback_out));
+            c++;
+        }
+        callback_out->next = NULL;
+
+        p += align_size(sizeof(homekit_characteristic_change_callback_t)) * c;
+    }
+
     clone->getter = ch->getter;
     clone->setter = ch->setter;
-    clone->callback = ch->callback;
     clone->getter_ex = ch->getter_ex;
     clone->setter_ex = ch->setter_ex;
     clone->context = ch->context;
