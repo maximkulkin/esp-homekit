@@ -15,6 +15,7 @@ void homekit_overclock_end();
 #endif
 
 #ifdef ESP_IDF
+#include <esp_system.h>
 #include <esp_spi_flash.h>
 #define SPI_FLASH_SECTOR_SIZE SPI_FLASH_SEC_SIZE
 #define spiflash_read(addr, buffer, size) (spi_flash_read((addr), (buffer), (size)) == ESP_OK)
