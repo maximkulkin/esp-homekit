@@ -3076,7 +3076,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     const int yes = 1; /* enable sending keepalive probes for socket */
     setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
 
-    const int idle = 180; /* 180 sec iddle before start sending probes */
+    const int idle = 180; /* 180 sec idle before start sending probes */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
 
     const int interval = 30; /* 30 sec between probes */
