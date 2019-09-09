@@ -3447,7 +3447,12 @@ void homekit_server_init(homekit_server_config_t *config) {
     homekit_server_t *server = server_new();
     server->config = config;
 
-    xTaskCreate(homekit_server_task, "HomeKit Server", SERVER_TASK_STACK, server, 1, NULL);
+    if (pdPASS != xTaskCreate(homekit_server_task, "HomeKit Server",
+                              SERVER_TASK_STACK, server, 1, NULL)) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to start a server task");
+        server_free(server);
+    }
 }
 
 void homekit_server_reset() {
