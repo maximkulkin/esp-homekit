@@ -80,7 +80,11 @@ ifdef component_compile_rules
 
 else
     # ESP_IDF
+    ifeq ($(IDF_TARGET),esp8266)
+    COMPONENT_DEPENDS = wolfssl cJSON http-parser
+    else ifeq ($(IDF_TARGET),esp32)
     COMPONENT_DEPENDS = wolfssl json http-parser
+    endif
 
     COMPONENT_PRIV_INCLUDEDIRS = src
     COMPONENT_SRCDIRS = src
