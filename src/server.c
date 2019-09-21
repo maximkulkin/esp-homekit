@@ -2258,6 +2258,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
                     int min_value = 0;
                     int max_value = 0;
+                    bool is_signed = false;
 
                     switch (ch->format) {
                         case homekit_format_uint8: {
@@ -2284,6 +2285,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         case homekit_format_int: {
                             min_value = -2147483648;
                             max_value = 2147483647;
+                            is_signed = true;
                             break;
                         }
                         default: {
@@ -2298,10 +2300,18 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         max_value = (int)*ch->max_value;
 
                     int value = j_value->valueint;
-                    if (value < min_value || value > max_value) {
-                        CLIENT_ERROR(context, "Failed to update %d.%d: value %d is not in range %d..%d",
-                                     aid, iid, value, min_value, max_value);
-                        return HAPStatus_InvalidValue;
+                    if (is_signed) {
+                        if (value < min_value || value > max_value) {
+                            CLIENT_ERROR(context, "Failed to update %d.%d: value %d is not in range %d..%d",
+                                        aid, iid, value, min_value, max_value);
+                            return HAPStatus_InvalidValue;
+                        }
+                    } else {
+                        if ((unsigned int)value < (unsigned int)min_value || (unsigned int)value > (unsigned int)max_value) {
+                            CLIENT_ERROR(context, "Failed to update %d.%d: value %d is not in range %d..%d",
+                                        aid, iid, value, min_value, max_value);
+                            return HAPStatus_InvalidValue;
+                        }
                     }
 
                     if (ch->valid_values.count) {
