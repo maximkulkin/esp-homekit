@@ -87,6 +87,10 @@ typedef struct {
     union {
         bool bool_value;
         int int_value;
+        uint8_t uint8_value;
+        uint16_t uint16_value;
+        uint32_t uint32_value;
+        uint64_t uint64_value;
         float float_value;
         char *string_value;
         tlv_values_t *tlv_values;
@@ -114,19 +118,19 @@ void homekit_value_free(homekit_value_t *value);
 #define HOMEKIT_INT(value, ...) (homekit_value_t) HOMEKIT_INT_(value, ##__VA_ARGS__)
 
 #define HOMEKIT_UINT8_(value, ...) \
-    {.format=homekit_format_uint8, .int_value=(value), ##__VA_ARGS__}
+    {.format=homekit_format_uint8, .uint8_value=(value), ##__VA_ARGS__}
 #define HOMEKIT_UINT8(value, ...) (homekit_value_t) HOMEKIT_UINT8_(value, ##__VA_ARGS__)
 
 #define HOMEKIT_UINT16_(value, ...) \
-    {.format=homekit_format_uint16, .int_value=(value), ##__VA_ARGS__}
+    {.format=homekit_format_uint16, .uint16_value=(value), ##__VA_ARGS__}
 #define HOMEKIT_UINT16(value, ...) (homekit_value_t) HOMEKIT_UINT16_(value, ##__VA_ARGS__)
 
 #define HOMEKIT_UINT32_(value, ...) \
-    {.format=homekit_format_uint32, .int_value=(value), ##__VA_ARGS__}
+    {.format=homekit_format_uint32, .uint32_value=(value), ##__VA_ARGS__}
 #define HOMEKIT_UINT32(value, ...) (homekit_value_t) HOMEKIT_UINT32_(value, ##__VA_ARGS__)
 
 #define HOMEKIT_UINT64_(value, ...) \
-    {.format=homekit_format_uint64, .int_value=(value), ##__VA_ARGS__}
+    {.format=homekit_format_uint64, .uint64_value=(value), ##__VA_ARGS__}
 #define HOMEKIT_UINT64(value, ...) (homekit_value_t) HOMEKIT_UINT64_(value, ##__VA_ARGS__)
 
 #define HOMEKIT_FLOAT_(value, ...) \

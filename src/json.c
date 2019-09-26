@@ -199,12 +199,12 @@ void json_array_end(json_stream *json) {
     }
 }
 
-void json_integer(json_stream *json, long long x) {
+void _json_number(json_stream *json, char *value) {
     if (json->state == JSON_STATE_ERROR)
         return;
 
     void _do_write() {
-        json_write(json, "%ld", x);
+        json_write(json, value);
     }
 
     switch (json->state) {
@@ -229,34 +229,52 @@ void json_integer(json_stream *json, long long x) {
     }
 }
 
+
+void json_uint8(json_stream *json, uint8_t x) {
+    char buffer[4];
+    snprintf(buffer, sizeof(buffer), "%u", x);
+
+    _json_number(json, buffer);
+}
+
+void json_uint16(json_stream *json, uint16_t x) {
+    char buffer[6];
+    snprintf(buffer, sizeof(buffer), "%u", x);
+
+    _json_number(json, buffer);
+}
+
+void json_uint32(json_stream *json, uint32_t x) {
+    char buffer[11];
+    snprintf(buffer, sizeof(buffer), "%u", x);
+
+    _json_number(json, buffer);
+}
+
+void json_uint64(json_stream *json, uint64_t x) {
+    char buffer[21];
+    buffer[20] = 0;
+
+    char *b = &buffer[20];
+    do {
+        *(--b) = '0' + (x % 10);
+    } while (x /= 10);
+
+    _json_number(json, b);
+}
+
+void json_integer(json_stream *json, int x) {
+    char buffer[7];
+    snprintf(buffer, sizeof(buffer), "%d", x);
+
+    _json_number(json, buffer);
+}
+
 void json_float(json_stream *json, float x) {
-    if (json->state == JSON_STATE_ERROR)
-        return;
+    char buffer[20];
+    snprintf(buffer, sizeof(buffer), "%1.15g", x);
 
-    void _do_write() {
-        json_write(json, "%1.15g", x);
-    }
-
-    switch (json->state) {
-        case JSON_STATE_START:
-            _do_write();
-            json->state = JSON_STATE_END;
-            break;
-        case JSON_STATE_ARRAY_ITEM:
-            json_write(json, ",");
-        case JSON_STATE_ARRAY:
-            _do_write();
-            json->state = JSON_STATE_ARRAY_ITEM;
-            break;
-        case JSON_STATE_OBJECT_KEY:
-            _do_write();
-            json->state = JSON_STATE_OBJECT_VALUE;
-            break;
-        default:
-            ERROR("Unexpected float");
-            DEBUG_STATE(json);
-            json->state = JSON_STATE_ERROR;
-    }
+    _json_number(json, buffer);
 }
 
 void json_string(json_stream *json, const char *x) {

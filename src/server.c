@@ -416,8 +416,8 @@ typedef enum {
 
 
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
-    json_string(json, "aid"); json_integer(json, ch->service->accessory->id);
-    json_string(json, "iid"); json_integer(json, ch->id);
+    json_string(json, "aid"); json_uint32(json, ch->service->accessory->id);
+    json_string(json, "iid"); json_uint32(json, ch->id);
 
     if (format & characteristic_format_type) {
         json_string(json, "type"); json_string(json, ch->type);
@@ -493,18 +493,18 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
         }
 
         if (ch->max_len) {
-            json_string(json, "maxLen"); json_integer(json, *ch->max_len);
+            json_string(json, "maxLen"); json_uint32(json, *ch->max_len);
         }
 
         if (ch->max_data_len) {
-            json_string(json, "maxDataLen"); json_integer(json, *ch->max_data_len);
+            json_string(json, "maxDataLen"); json_uint32(json, *ch->max_data_len);
         }
 
         if (ch->valid_values.count) {
             json_string(json, "valid-values"); json_array_start(json);
 
             for (int i=0; i<ch->valid_values.count; i++) {
-                json_integer(json, ch->valid_values.values[i]);
+                json_uint16(json, ch->valid_values.values[i]);
             }
 
             json_array_end(json);
@@ -539,10 +539,22 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     json_string(json, "value"); json_boolean(json, v.bool_value);
                     break;
                 }
-                case homekit_format_uint8:
-                case homekit_format_uint16:
-                case homekit_format_uint32:
-                case homekit_format_uint64:
+                case homekit_format_uint8: {
+                    json_string(json, "value"); json_uint8(json, v.uint8_value);
+                    break;
+                }
+                case homekit_format_uint16: {
+                    json_string(json, "value"); json_uint16(json, v.uint16_value);
+                    break;
+                }
+                case homekit_format_uint32: {
+                    json_string(json, "value"); json_uint32(json, v.uint32_value);
+                    break;
+                }
+                case homekit_format_uint64: {
+                    json_string(json, "value"); json_uint64(json, v.uint64_value);
+                    break;
+                }
                 case homekit_format_int: {
                     json_string(json, "value"); json_integer(json, v.int_value);
                     break;
@@ -1972,7 +1984,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
         json_object_start(json);
 
-        json_string(json, "aid"); json_integer(json, accessory->id);
+        json_string(json, "aid"); json_uint32(json, accessory->id);
         json_string(json, "services"); json_array_start(json);
 
         for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
@@ -1980,14 +1992,14 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
             json_object_start(json);
 
-            json_string(json, "iid"); json_integer(json, service->id);
+            json_string(json, "iid"); json_uint32(json, service->id);
             json_string(json, "type"); json_string(json, service->type);
             json_string(json, "hidden"); json_boolean(json, service->hidden);
             json_string(json, "primary"); json_boolean(json, service->primary);
             if (service->linked) {
                 json_string(json, "linked"); json_array_start(json);
                 for (homekit_service_t **linked=service->linked; *linked; linked++) {
-                    json_integer(json, (*linked)->id);
+                    json_uint32(json, (*linked)->id);
                 }
                 json_array_end(json);
             }
@@ -2106,9 +2118,9 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 
     void write_characteristic_error(json_stream *json, int aid, int iid, int status) {
         json_object_start(json);
-        json_string(json, "aid"); json_integer(json, aid);
-        json_string(json, "iid"); json_integer(json, iid);
-        json_string(json, "status"); json_integer(json, status);
+        json_string(json, "aid"); json_uint32(json, aid);
+        json_string(json, "iid"); json_uint32(json, iid);
+        json_string(json, "status"); json_uint8(json, status);
         json_object_end(json);
     }
 
@@ -2134,7 +2146,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         json_object_start(json);
         write_characteristic_json(json, context, ch, format, NULL);
         if (!success) {
-            json_string(json, "status"); json_integer(json, HAPStatus_Success);
+            json_string(json, "status"); json_uint8(json, HAPStatus_Success);
         }
         json_object_end(json);
     }
@@ -2256,8 +2268,8 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    int min_value = 0;
-                    int max_value = 0;
+                    double min_value = 0;
+                    double max_value = 0;
 
                     switch (ch->format) {
                         case homekit_format_uint8: {
@@ -2277,8 +2289,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                         case homekit_format_uint64: {
                             min_value = 0;
-                            // max_value = 18446744073709551615ULL;
-                            max_value = 4294967295;
+                            max_value = 18446744073709551615ULL;
                             break;
                         }
                         case homekit_format_int: {
@@ -2293,21 +2304,22 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     }
 
                     if (ch->min_value)
-                        min_value = (int)*ch->min_value;
+                        min_value = *ch->min_value;
                     if (ch->max_value)
-                        max_value = (int)*ch->max_value;
+                        max_value = *ch->max_value;
 
-                    int value = j_value->valueint;
+                    double value = j_value->valuedouble;
                     if (value < min_value || value > max_value) {
-                        CLIENT_ERROR(context, "Failed to update %d.%d: value %d is not in range %d..%d",
+                        CLIENT_ERROR(context, "Failed to update %d.%d: value %g is not in range %g..%g",
                                      aid, iid, value, min_value, max_value);
                         return HAPStatus_InvalidValue;
                     }
 
                     if (ch->valid_values.count) {
                         bool matches = false;
+                        int v = (int)value;
                         for (int i=0; i<ch->valid_values.count; i++) {
-                            if (value == ch->valid_values.values[i]) {
+                            if (v == ch->valid_values.values[i]) {
                                 matches = true;
                                 break;
                             }
@@ -2335,10 +2347,30 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %d", aid, iid, value);
+                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %g", aid, iid, value);
 
-                    h_value = HOMEKIT_INT(value);
-                    h_value.format = ch->format;
+                    switch (ch->format) {
+                        case homekit_format_uint8:
+                            h_value = HOMEKIT_UINT8(value);
+                            break;
+                        case homekit_format_uint16:
+                            h_value = HOMEKIT_UINT16(value);
+                            break;
+                        case homekit_format_uint32:
+                            h_value = HOMEKIT_UINT32(value);
+                            break;
+                        case homekit_format_uint64:
+                            h_value = HOMEKIT_UINT64(value);
+                            break;
+                        case homekit_format_int:
+                            h_value = HOMEKIT_INT(value);
+                            break;
+
+                        default:
+                            CLIENT_ERROR(context, "Unexpected format when updating numeric value: %d", ch->format);
+                            return HAPStatus_InvalidValue;
+                    }
+
                     if (ch->setter_ex) {
                         ch->setter_ex(ch, h_value);
                     } else {
@@ -2515,9 +2547,9 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             cJSON *j_ch = cJSON_GetArrayItem(characteristics, i);
 
             json_object_start(json1);
-            json_string(json1, "aid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
-            json_string(json1, "iid"); json_integer(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
-            json_string(json1, "status"); json_integer(json1, statuses[i]);
+            json_string(json1, "aid"); json_uint32(json1, cJSON_GetObjectItem(j_ch, "aid")->valueint);
+            json_string(json1, "iid"); json_uint32(json1, cJSON_GetObjectItem(j_ch, "iid")->valueint);
+            json_string(json1, "status"); json_uint8(json1, statuses[i]);
             json_object_end(json1);
         }
 
