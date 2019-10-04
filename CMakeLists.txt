@@ -21,7 +21,7 @@ set(COMPONENT_ADD_INCLUDEDIRS
 
 set(COMPONENT_PRIV_INCLUDEDIRS "src")
 set(COMPONENT_SRCEXCLUDE "src/mdnsresponder.c")
-set(COMPONENT_REQUIRES wolfssl cJSON http-parser mdns)
+set(COMPONENT_REQUIRES wolfssl json http-parser mdns)
 
 register_component()
 
