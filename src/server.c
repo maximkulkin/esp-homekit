@@ -64,7 +64,6 @@ typedef enum {
     HOMEKIT_ENDPOINT_GET_CHARACTERISTICS,
     HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS,
     HOMEKIT_ENDPOINT_PAIRINGS,
-    HOMEKIT_ENDPOINT_RESET,
     HOMEKIT_ENDPOINT_RESOURCE,
 } homekit_endpoint_t;
 
@@ -2887,8 +2886,6 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
             context->endpoint = HOMEKIT_ENDPOINT_PAIR_VERIFY;
         } else if (!strncmp(data, "/pairings", length)) {
             context->endpoint = HOMEKIT_ENDPOINT_PAIRINGS;
-        } else if (!strncmp(data, "/reset", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_RESET;
         } else if (!strncmp(data, "/resource", length)) {
             context->endpoint = HOMEKIT_ENDPOINT_RESOURCE;
         }
@@ -2920,47 +2917,53 @@ int homekit_server_on_body(http_parser *parser, const char *data, size_t length)
 int homekit_server_on_message_complete(http_parser *parser) {
     client_context_t *context = parser->data;
 
-    switch(context->endpoint) {
-        case HOMEKIT_ENDPOINT_PAIR_SETUP: {
-            homekit_server_on_pair_setup(context, (const byte *)context->body, context->body_length);
-            break;
+    if (!context->encrypted) {
+        switch(context->endpoint) {
+            case HOMEKIT_ENDPOINT_PAIR_SETUP: {
+                homekit_server_on_pair_setup(context, (const byte *)context->body, context->body_length);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_PAIR_VERIFY: {
+                homekit_server_on_pair_verify(context, (const byte *)context->body, context->body_length);
+                break;
+            }
+            default: {
+                DEBUG("Unknown endpoint");
+                send_404_response(context);
+                break;
+            }
         }
-        case HOMEKIT_ENDPOINT_PAIR_VERIFY: {
-            homekit_server_on_pair_verify(context, (const byte *)context->body, context->body_length);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_IDENTIFY: {
-            homekit_server_on_identify(context);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_GET_ACCESSORIES: {
-            homekit_server_on_get_accessories(context);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_GET_CHARACTERISTICS: {
-            homekit_server_on_get_characteristics(context);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS: {
-            homekit_server_on_update_characteristics(context, (const byte *)context->body, context->body_length);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_PAIRINGS: {
-            homekit_server_on_pairings(context, (const byte *)context->body, context->body_length);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_RESET: {
-            homekit_server_on_reset(context);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_RESOURCE: {
-            homekit_server_on_resource(context);
-            break;
-        }
-        case HOMEKIT_ENDPOINT_UNKNOWN: {
-            DEBUG("Unknown endpoint");
-            send_404_response(context);
-            break;
+    } else {
+        switch(context->endpoint) {
+            case HOMEKIT_ENDPOINT_IDENTIFY: {
+                homekit_server_on_identify(context);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_GET_ACCESSORIES: {
+                homekit_server_on_get_accessories(context);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_GET_CHARACTERISTICS: {
+                homekit_server_on_get_characteristics(context);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS: {
+                homekit_server_on_update_characteristics(context, (const byte *)context->body, context->body_length);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_PAIRINGS: {
+                homekit_server_on_pairings(context, (const byte *)context->body, context->body_length);
+                break;
+            }
+            case HOMEKIT_ENDPOINT_RESOURCE: {
+                homekit_server_on_resource(context);
+                break;
+            }
+            default: {
+                DEBUG("Unknown endpoint");
+                send_404_response(context);
+                break;
+            }
         }
     }
 
