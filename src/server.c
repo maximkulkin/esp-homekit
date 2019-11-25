@@ -3105,7 +3105,17 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
         return NULL;
     }
 
-    INFO("Got new client connection: %d", s);
+    char address_buffer[INET_ADDRSTRLEN];
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(s, (struct sockaddr *)&addr, &addr_len) == 0) {
+        inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
+    } else {
+        strcpy(address_buffer, "?.?.?.?");
+    }
+
+    INFO("Got new client connection: %d from %s", s, address_buffer);
 
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
