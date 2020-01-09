@@ -17,6 +17,7 @@ bool homekit_storage_can_add_pairing();
 int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device_key, byte permissions);
 int homekit_storage_update_pairing(const char *device_id, byte permissions);
 int homekit_storage_remove_pairing(const char *device_id);
+void homekit_storage_remove_all_pairings();
 int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing);
 
 typedef struct {

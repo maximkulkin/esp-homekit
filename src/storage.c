@@ -315,6 +315,26 @@ int homekit_storage_remove_pairing(const char *device_id) {
 }
 
 
+void homekit_storage_remove_all_pairings() {
+    pairing_data_t data;
+
+    int idx = 0;
+    while(idx < MAX_PAIRINGS) {
+        int id = idx++;
+
+        spiflash_read(PAIRINGS_ADDR + sizeof(data)*id, (byte *)&data, sizeof(data));
+        if (!strncmp(data.magic, magic1, sizeof(data.magic))) {
+            // remove
+            memset(&data, 0, sizeof(data));
+            if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*idx, (byte *)&data, sizeof(data))) {
+                ERROR("Failed to remove pairing from flash");
+                continue;
+            }
+        }
+    }
+}
+
+
 int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {

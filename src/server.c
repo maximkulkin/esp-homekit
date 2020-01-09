@@ -13,10 +13,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include <freertos/timers.h>
 #elif defined(ESP_OPEN_RTOS)
 #include <FreeRTOS.h>
 #include <task.h>
 #include <queue.h>
+#include <timers.h>
 #else
 #error "Unknown target platform"
 #endif
@@ -97,6 +99,7 @@ typedef struct {
     homekit_server_config_t *config;
 
     bool paired;
+    TimerHandle_t paired_timer;
     pairing_context_t *pairing_context;
 
     int listen_fd;
@@ -151,6 +154,7 @@ typedef struct {
 
 void client_context_free(client_context_t *c);
 void pairing_context_free(pairing_context_t *context);
+static void homekit_paired_timer_timeout(TimerHandle_t timer);
 
 
 homekit_server_t *server_new() {
@@ -160,6 +164,10 @@ homekit_server_t *server_new() {
     server->client_count = 0;
     server->config = NULL;
     server->paired = false;
+    server->paired_timer = xTimerCreate(
+        "Paired Timer", pdMS_TO_TICKS(10000), false,
+        server, homekit_paired_timer_timeout
+    );
     server->pairing_context = NULL;
     server->clients = NULL;
     return server;
@@ -169,6 +177,10 @@ homekit_server_t *server_new() {
 void server_free(homekit_server_t *server) {
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
+
+    if (server->paired_timer) {
+        xTimerDelete(server->paired_timer, 1);
+    }
 
     if (server->clients) {
         client_context_t *client = server->clients;
@@ -1500,8 +1512,10 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             pairing_context_free(context->server->pairing_context);
             context->server->pairing_context = NULL;
 
-            context->server->paired = 1;
+            context->server->paired = true;
             homekit_setup_mdns(context->server);
+
+            xTimerStart(context->server->paired_timer, 1);
 
             CLIENT_INFO(context, "Successfully paired");
 
@@ -1938,6 +1952,10 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             context->permissions = permissions;
             context->encrypted = true;
 
+            if (xTimerIsTimerActive(context->server->paired_timer)) {
+                xTimerStop(context->server->paired_timer, 1);
+            }
+
             HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_CLIENT_VERIFIED);
 
             CLIENT_INFO(context, "Verification successful, secure session established");
@@ -1955,6 +1973,21 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 #ifdef HOMEKIT_OVERCLOCK_PAIR_VERIFY
     homekit_overclock_end();
 #endif
+}
+
+
+static void homekit_paired_timer_timeout(TimerHandle_t timer) {
+    INFO("Pairing completion expired, markin device as unpaired");
+
+    homekit_server_t *server = (homekit_server_t*) pvTimerGetTimerID(timer);
+    xTimerStop(server->paired_timer, 1);
+
+    homekit_storage_remove_all_pairings();
+
+    server->paired = false;
+    homekit_setup_mdns(server);
+
+    HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_PAIRING_REMOVED);
 }
 
 
