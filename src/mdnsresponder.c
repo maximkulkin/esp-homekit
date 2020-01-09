@@ -748,62 +748,63 @@ static void mdns_reply(const ip_addr_t *addr, struct mdns_hdr* hdrP)
             char  qStr[kMaxQStr];
             u16_t qClass, qType;
             u8_t  qUnicast;
-            mdns_rsrc* rsrcP;
 
             qp = mdns_get_question(qBase, qp, qStr, &qClass, &qType, &qUnicast);
-            if (qClass == DNS_RRCLASS_IN || qClass == DNS_RRCLASS_ANY) {
-                rsrcP = mdns_match(qStr, qType);
-                if (rsrcP) {
+            if (qClass != DNS_RRCLASS_IN && qClass != DNS_RRCLASS_ANY)
+                continue;
+
+            mdns_rsrc* rsrcP = mdns_match(qStr, qType);
+            if (!rsrcP)
+                continue;
+
 #if LWIP_IPV6
-                    if (rsrcP->rType == DNS_RRTYPE_AAAA) {
-                        // Emit an answer for each ipv6 address.
-                        struct netif *netif = ip_current_input_netif();
-                        for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++) {
-                            if (ip6_addr_isvalid(netif_ip6_addr_state(netif, i))) {
-                                const ip6_addr_t *addr6 = netif_ip6_addr(netif, i);
+            if (rsrcP->rType == DNS_RRTYPE_AAAA) {
+                // Emit an answer for each ipv6 address.
+                struct netif *netif = ip_current_input_netif();
+                for (int j = 0; j < LWIP_IPV6_NUM_ADDRESSES; j++) {
+                    if (ip6_addr_isvalid(netif_ip6_addr_state(netif, j))) {
+                        const ip6_addr_t *addr6 = netif_ip6_addr(netif, j);
 #ifdef qDebugLog
-                                char addr6_str[IP6ADDR_STRLEN_MAX];
-                                ip6addr_ntoa_r(addr6, addr6_str, IP6ADDR_STRLEN_MAX);
-                                printf("Updating AAAA record for '%s' to %s\n", rsrcP->rData, addr6_str);
+                        char addr6_str[IP6ADDR_STRLEN_MAX];
+                        ip6addr_ntoa_r(addr6, addr6_str, IP6ADDR_STRLEN_MAX);
+                        printf("Updating AAAA record for '%s' to %s\n", rsrcP->rData, addr6_str);
 #endif
-                                memcpy(&rsrcP->rData[rsrcP->rKeySize], addr6, sizeof(addr6->addr));
-                                size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
-                                if (new_len > respLen) {
-                                    rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
-                                    respLen = new_len;
-                                }
-                            }
+                        memcpy(&rsrcP->rData[rsrcP->rKeySize], addr6, sizeof(addr6->addr));
+                        size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
+                        if (new_len > respLen) {
+                            rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
+                            respLen = new_len;
                         }
-                        continue;
-                    }
-#endif
-
-                    if (rsrcP->rType == DNS_RRTYPE_A) {
-                        struct netif *netif = ip_current_input_netif();
-#ifdef qDebugLog
-                        char addr4_str[IP4ADDR_STRLEN_MAX];
-                        ip4addr_ntoa_r(netif_ip4_addr(netif), addr4_str, IP4ADDR_STRLEN_MAX);
-                        printf("Updating A record for '%s' to %s\n", rsrcP->rData, addr4_str);
-#endif
-                        memcpy(&rsrcP->rData[rsrcP->rKeySize], netif_ip4_addr(netif), sizeof(ip4_addr_t));
-                    }
-
-                    size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
-                    if (new_len > respLen) {
-                        rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
-                        respLen = new_len;
-                    }
-
-                    // Extra RR logic: if SRV follows PTR, or A follows SRV, volunteer it in extraRR
-                    // Not required, but could do more here, see RFC6763 s12
-                    if (qType == DNS_RRTYPE_PTR) {
-                        if (rsrcP->rNext && rsrcP->rNext->rType == DNS_RRTYPE_SRV)
-                            extra = rsrcP->rNext;
-                    } else if (qType == DNS_RRTYPE_SRV) {
-                        if (rsrcP->rNext && rsrcP->rNext->rType == DNS_RRTYPE_A)
-                            extra = rsrcP->rNext;
                     }
                 }
+                continue;
+            }
+#endif
+
+            if (rsrcP->rType == DNS_RRTYPE_A) {
+                struct netif *netif = ip_current_input_netif();
+#ifdef qDebugLog
+                char addr4_str[IP4ADDR_STRLEN_MAX];
+                ip4addr_ntoa_r(netif_ip4_addr(netif), addr4_str, IP4ADDR_STRLEN_MAX);
+                printf("Updating A record for '%s' to %s\n", rsrcP->rData, addr4_str);
+#endif
+                memcpy(&rsrcP->rData[rsrcP->rKeySize], netif_ip4_addr(netif), sizeof(ip4_addr_t));
+            }
+
+            size_t new_len = mdns_add_to_answer(rsrcP, mdns_response, respLen);
+            if (new_len > respLen) {
+                rHdr->numanswers = htons(htons(rHdr->numanswers) + 1);
+                respLen = new_len;
+            }
+
+            // Extra RR logic: if SRV follows PTR, or A follows SRV, volunteer it in extraRR
+            // Not required, but could do more here, see RFC6763 s12
+            if (qType == DNS_RRTYPE_PTR) {
+                if (rsrcP->rNext && rsrcP->rNext->rType == DNS_RRTYPE_SRV)
+                    extra = rsrcP->rNext;
+            } else if (qType == DNS_RRTYPE_SRV) {
+                if (rsrcP->rNext && rsrcP->rNext->rType == DNS_RRTYPE_A)
+                    extra = rsrcP->rNext;
             }
         } // for nQuestions
 
@@ -855,9 +856,9 @@ static void mdns_announce_netif(struct netif *netif, const ip_addr_t *addr)
 #if LWIP_IPV6
             if (rsrcP->rType == DNS_RRTYPE_AAAA) {
                 // Emit an answer for each ipv6 address.
-                for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++) {
-                    if (ip6_addr_isvalid(netif_ip6_addr_state(netif, i))) {
-                        const ip6_addr_t *addr6 = netif_ip6_addr(netif, i);
+                for (int j = 0; j < LWIP_IPV6_NUM_ADDRESSES; j++) {
+                    if (ip6_addr_isvalid(netif_ip6_addr_state(netif, j))) {
+                        const ip6_addr_t *addr6 = netif_ip6_addr(netif, j);
 #ifdef qDebugLog
                         char addr6_str[IP6ADDR_STRLEN_MAX];
                         ip6addr_ntoa_r(addr6, addr6_str, IP6ADDR_STRLEN_MAX);
