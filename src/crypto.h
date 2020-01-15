@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include <wolfssl/wolfcrypt/ed25519.h>
+#include <wolfssl/wolfcrypt/curve25519.h>
 
 typedef unsigned char byte;
 
@@ -92,12 +93,9 @@ int crypto_ed25519_verify(
 
 
 // CURVE25519
-struct _curve25519_key;
-typedef struct _curve25519_key curve25519_key;
-
-curve25519_key *crypto_curve25519_new();
-curve25519_key *crypto_curve25519_generate();
-void crypto_curve25519_free(curve25519_key *key);
+int crypto_curve25519_init(curve25519_key *key);
+int crypto_curve25519_done(curve25519_key *key);
+int crypto_curve25519_generate(curve25519_key *key);
 int crypto_curve25519_import_public(
     curve25519_key *key,
     const byte *data, size_t size

@@ -1545,50 +1545,59 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 send_tlv_error_response(context, 2, TLVError_Unknown);
                 break;
             }
-            curve25519_key *device_key = crypto_curve25519_new();
+            curve25519_key device_key;
+            r = crypto_curve25519_init(&device_key);
+            if (r) {
+                CLIENT_ERROR(context, "Failed to initialize device Curve25519 public key (code %d)", r);
+                send_tlv_error_response(context, 2, TLVError_Unknown);
+                break;
+            }
+
             r = crypto_curve25519_import_public(
-                device_key,
+                &device_key,
                 tlv_device_public_key->value, tlv_device_public_key->size
             );
             if (r) {
                 CLIENT_ERROR(context, "Failed to import device Curve25519 public key (code %d)", r);
-                crypto_curve25519_free(device_key);
+                crypto_curve25519_done(&device_key);
                 send_tlv_error_response(context, 2, TLVError_Unknown);
                 break;
             }
 
             CLIENT_DEBUG(context, "Generating accessory Curve25519 key");
-            curve25519_key *my_key = crypto_curve25519_generate();
-            if (!my_key) {
-                CLIENT_ERROR(context, "Failed to generate accessory Curve25519 key");
-                crypto_curve25519_free(device_key);
+
+            curve25519_key my_key;
+            r = crypto_curve25519_generate(&my_key);
+            if (r) {
+                CLIENT_ERROR(context, "Failed to generate accessory Curve25519 key (code %d)", r);
+                crypto_curve25519_done(&device_key);
                 send_tlv_error_response(context, 2, TLVError_Unknown);
                 break;
             }
 
             CLIENT_DEBUG(context, "Exporting accessory Curve25519 public key");
             size_t my_key_public_size = 0;
-            crypto_curve25519_export_public(my_key, NULL, &my_key_public_size);
+            crypto_curve25519_export_public(&my_key, NULL, &my_key_public_size);
 
             byte *my_key_public = malloc(my_key_public_size);
-            r = crypto_curve25519_export_public(my_key, my_key_public, &my_key_public_size);
+            r = crypto_curve25519_export_public(&my_key, my_key_public, &my_key_public_size);
             if (r) {
                 CLIENT_ERROR(context, "Failed to export accessory Curve25519 public key (code %d)", r);
                 free(my_key_public);
-                crypto_curve25519_free(my_key);
-                crypto_curve25519_free(device_key);
+                crypto_curve25519_done(&my_key);
+                crypto_curve25519_done(&device_key);
                 send_tlv_error_response(context, 2, TLVError_Unknown);
                 break;
             }
 
             CLIENT_DEBUG(context, "Generating Curve25519 shared secret");
             size_t shared_secret_size = 0;
-            crypto_curve25519_shared_secret(my_key, device_key, NULL, &shared_secret_size);
+            crypto_curve25519_shared_secret(&my_key, &device_key, NULL, &shared_secret_size);
 
             byte *shared_secret = malloc(shared_secret_size);
-            r = crypto_curve25519_shared_secret(my_key, device_key, shared_secret, &shared_secret_size);
-            crypto_curve25519_free(my_key);
-            crypto_curve25519_free(device_key);
+            r = crypto_curve25519_shared_secret(&my_key, &device_key, shared_secret, &shared_secret_size);
+            crypto_curve25519_done(&my_key);
+            crypto_curve25519_done(&device_key);
 
             if (r) {
                 CLIENT_ERROR(context, "Failed to generate Curve25519 shared secret (code %d)", r);
