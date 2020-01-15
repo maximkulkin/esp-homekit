@@ -115,13 +115,13 @@ struct _client_context_t {
     homekit_endpoint_t endpoint;
     query_param_t *endpoint_params;
 
-    byte *data;
+    byte data[1024 + 18];
     size_t data_size;
     size_t data_available;
 
     char *body;
     size_t body_length;
-    http_parser *parser;
+    http_parser parser;
 
     int pairing_id;
     byte permissions;
@@ -132,8 +132,8 @@ struct _client_context_t {
     homekit_value_t *current_value;
 
     bool encrypted;
-    byte *read_key;
-    byte *write_key;
+    byte read_key[32];
+    byte write_key[32];
     int count_reads;
     int count_writes;
 
@@ -318,20 +318,16 @@ client_context_t *client_context_new() {
     c->server = NULL;
     c->endpoint_params = NULL;
 
-    c->data_size = 1024 + 18;
+    c->data_size = sizeof(c->data);
     c->data_available = 0;
-    c->data = malloc(c->data_size);
 
     c->body = NULL;
     c->body_length = 0;
-    c->parser = malloc(sizeof(*c->parser));
-    http_parser_init(c->parser, HTTP_REQUEST);
-    c->parser->data = c;
+    http_parser_init(&c->parser, HTTP_REQUEST);
+    c->parser.data = c;
 
     c->pairing_id = -1;
     c->encrypted = false;
-    c->read_key = NULL;
-    c->write_key = NULL;
     c->count_reads = 0;
     c->count_writes = 0;
 
@@ -347,12 +343,6 @@ client_context_t *client_context_new() {
 
 
 void client_context_free(client_context_t *c) {
-    if (c->read_key)
-        free(c->read_key);
-
-    if (c->write_key)
-        free(c->write_key);
-
     if (c->verify_context)
         pair_verify_context_free(c->verify_context);
 
@@ -361,12 +351,6 @@ void client_context_free(client_context_t *c) {
 
     if (c->endpoint_params)
         query_params_free(c->endpoint_params);
-
-    if (c->parser)
-        free(c->parser);
-
-    if (c->data)
-        free(c->data);
 
     if (c->body)
         free(c->body);
@@ -618,7 +602,7 @@ int client_send_encrypted(
     client_context_t *context,
     byte *payload, size_t size
 ) {
-    if (!context || !context->encrypted || !context->read_key)
+    if (!context || !context->encrypted)
         return -1;
 
     byte nonce[12];
@@ -668,7 +652,7 @@ int client_decrypt(
     byte *payload, size_t payload_size,
     byte *decrypted, size_t *decrypted_size
 ) {
-    if (!context || !context->encrypted || !context->write_key)
+    if (!context || !context->encrypted)
         return -1;
 
     const size_t block_size = 1024 + 16 + 2;
@@ -1897,8 +1881,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             const byte salt[] = "Control-Salt";
 
-            size_t read_key_size = 32;
-            context->read_key = malloc(read_key_size);
+            size_t read_key_size = sizeof(context->read_key);
             const byte read_info[] = "Control-Read-Encryption-Key";
             r = crypto_hkdf(
                 context->verify_context->secret, context->verify_context->secret_size,
@@ -1910,8 +1893,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             if (r) {
                 CLIENT_ERROR(context, "Failed to derive read encryption key (code %d)", r);
 
-                free(context->read_key);
-                context->read_key = NULL;
                 pair_verify_context_free(context->verify_context);
                 context->verify_context = NULL;
 
@@ -1919,8 +1900,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 break;
             }
 
-            size_t write_key_size = 32;
-            context->write_key = malloc(write_key_size);
+            size_t write_key_size = sizeof(context->write_key);
             const byte write_info[] = "Control-Write-Encryption-Key";
             r = crypto_hkdf(
                 context->verify_context->secret, context->verify_context->secret_size,
@@ -1934,11 +1914,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             if (r) {
                 CLIENT_ERROR(context, "Failed to derive write encryption key (code %d)", r);
-
-                free(context->write_key);
-                context->write_key = NULL;
-                free(context->read_key);
-                context->read_key = NULL;
 
                 send_tlv_error_response(context, 4, TLVError_Unknown);
                 break;
@@ -3069,7 +3044,7 @@ static void homekit_client_process(client_context_t *context) {
     current_client_context = context;
 
     http_parser_execute(
-        context->parser, &homekit_http_parser_settings,
+        &context->parser, &homekit_http_parser_settings,
         (char *)payload, payload_size
     );
 
