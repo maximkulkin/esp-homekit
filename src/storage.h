@@ -17,14 +17,16 @@ bool homekit_storage_can_add_pairing();
 int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device_key, byte permissions);
 int homekit_storage_update_pairing(const char *device_id, byte permissions);
 int homekit_storage_remove_pairing(const char *device_id);
-pairing_t *homekit_storage_find_pairing(const char *device_id);
+int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing);
 
-struct _pairing_iterator;
-typedef struct _pairing_iterator pairing_iterator_t;
+typedef struct {
+    int idx;
+} pairing_iterator_t;
 
-pairing_iterator_t *homekit_storage_pairing_iterator();
-pairing_t *homekit_storage_next_pairing(pairing_iterator_t *iterator);
-void homekit_storage_pairing_iterator_free(pairing_iterator_t *iterator);
+
+void homekit_storage_pairing_iterator_init(pairing_iterator_t *it);
+int homekit_storage_next_pairing(pairing_iterator_t *it, pairing_t *pairing);
+void homekit_storage_pairing_iterator_done(pairing_iterator_t *iterator);
 
 
 #endif // __STORAGE_H__

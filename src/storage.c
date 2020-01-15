@@ -5,6 +5,8 @@
 #include "pairing.h"
 #include "port.h"
 
+#include "storage.h"
+
 #pragma GCC diagnostic ignored "-Wunused-value"
 
 #ifndef SPIFLASH_BASE_ADDR
@@ -177,22 +179,28 @@ static int compact_data() {
 
     if (next_pairing_idx == MAX_PAIRINGS) {
         // We are full, no compaction possible, do not waste flash erase cycle
+        free(data);
         return 0;
     }
 
     if (homekit_storage_reset()) {
         ERROR("Failed to compact data: error resetting flash");
+        free(data);
         return -1;
     }
     if (homekit_storage_init() < 0) {
         ERROR("Failed to compact data: error initializing flash");
+        free(data);
         return -1;
     }
 
     if (!spiflash_write(SPIFLASH_BASE_ADDR, data, PAIRINGS_OFFSET + sizeof(pairing_data_t)*next_pairing_idx)) {
         ERROR("Failed to compact data: error writing compacted data");
+        free(data);
         return -1;
     }
+
+    free(data);
 
     return 0;
 }
@@ -261,20 +269,22 @@ int homekit_storage_update_pairing(const char *device_id, byte permissions) {
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
-            int r;
+            int next_block_idx = find_empty_block();
+            if (next_block_idx == -1) {
+                compact_data();
+                next_block_idx = find_empty_block();
+            }
 
-            ed25519_key *device_key = crypto_ed25519_new();
-            r = crypto_ed25519_import_public_key(device_key, data.device_public_key, sizeof(data.device_public_key));
-            if (r) {
-                ERROR("Failed to import device public key (code %d)", r);
-                crypto_ed25519_free(device_key);
+            if (next_block_idx == -1) {
+                ERROR("Failed to write pairing info to flash: max number of pairings");
                 return -2;
             }
 
-            r = homekit_storage_add_pairing(data.device_id, device_key, permissions);
-            crypto_ed25519_free(device_key);
-            if (r) {
-                return -2;
+            data.permissions = permissions;
+
+            if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*next_block_idx, (byte *)&data, sizeof(data))) {
+                ERROR("Failed to write pairing info to flash");
+                return -1;
             }
 
             memset(&data, 0, sizeof(data));
@@ -311,7 +321,7 @@ int homekit_storage_remove_pairing(const char *device_id) {
 }
 
 
-pairing_t *homekit_storage_find_pairing(const char *device_id) {
+int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
@@ -319,70 +329,56 @@ pairing_t *homekit_storage_find_pairing(const char *device_id) {
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
-            ed25519_key *device_key = crypto_ed25519_new();
-            int r = crypto_ed25519_import_public_key(device_key, data.device_public_key, sizeof(data.device_public_key));
+            crypto_ed25519_init(&pairing->device_key);
+            int r = crypto_ed25519_import_public_key(&pairing->device_key, data.device_public_key, sizeof(data.device_public_key));
             if (r) {
                 ERROR("Failed to import device public key (code %d)", r);
-                return NULL;
+                return -2;
             }
 
-            pairing_t *pairing = pairing_new();
             pairing->id = i;
-            pairing->device_id = strndup(data.device_id, sizeof(data.device_id));
-            pairing->device_key = device_key;
+            strncpy(pairing->device_id, data.device_id, sizeof(pairing->device_id));
             pairing->permissions = data.permissions;
 
-            return pairing;
+            return 0;
         }
     }
 
-    return NULL;
+    return -1;
 }
 
 
-typedef struct {
-    int idx;
-} pairing_iterator_t;
-
-
-pairing_iterator_t *homekit_storage_pairing_iterator() {
-    pairing_iterator_t *it = malloc(sizeof(pairing_iterator_t));
+void homekit_storage_pairing_iterator_init(pairing_iterator_t *it) {
     it->idx = 0;
-    return it;
 }
 
 
-void homekit_storage_pairing_iterator_free(pairing_iterator_t *iterator) {
-    free(iterator);
+void homekit_storage_pairing_iterator_done(pairing_iterator_t *iterator) {
 }
 
 
-pairing_t *homekit_storage_next_pairing(pairing_iterator_t *it) {
+int homekit_storage_next_pairing(pairing_iterator_t *it, pairing_t *pairing) {
     pairing_data_t data;
     while(it->idx < MAX_PAIRINGS) {
         int id = it->idx++;
 
         spiflash_read(PAIRINGS_ADDR + sizeof(data)*id, (byte *)&data, sizeof(data));
         if (!strncmp(data.magic, magic1, sizeof(data.magic))) {
-            ed25519_key *device_key = crypto_ed25519_new();
-            int r = crypto_ed25519_import_public_key(device_key, data.device_public_key, sizeof(data.device_public_key));
+            crypto_ed25519_init(&pairing->device_key);
+            int r = crypto_ed25519_import_public_key(&pairing->device_key, data.device_public_key, sizeof(data.device_public_key));
             if (r) {
                 ERROR("Failed to import device public key (code %d)", r);
-                crypto_ed25519_free(device_key);
-                it->idx++;
                 continue;
             }
 
-            pairing_t *pairing = pairing_new();
             pairing->id = id;
-            pairing->device_id = strndup(data.device_id, sizeof(data.device_id));
-            pairing->device_key = device_key;
+            strncpy(pairing->device_id, data.device_id, sizeof(pairing->device_id));
             pairing->permissions = data.permissions;
 
-            return pairing;
+            return 0;
         }
     }
 
-    return NULL;
+    return -1;
 }
 

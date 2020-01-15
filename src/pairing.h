@@ -9,12 +9,9 @@ typedef enum {
 
 typedef struct {
     int id;
-    char *device_id;
-    ed25519_key *device_key;
+    char device_id[36];
+    ed25519_key device_key;
     pairing_permissions_t permissions;
 } pairing_t;
-
-pairing_t *pairing_new();
-void pairing_free(pairing_t *pairing);
 
 #endif // __PAIRING_H__
