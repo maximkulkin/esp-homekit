@@ -3,6 +3,8 @@
 
 #include <stdlib.h>
 
+#include <wolfssl/wolfcrypt/ed25519.h>
+
 typedef unsigned char byte;
 
 #define HKDF_HASH_SIZE 32  // CHACHA20_POLY1305_AEAD_KEYSIZE
@@ -54,9 +56,7 @@ int crypto_chacha20poly1305_decrypt(
 );
 
 // ED25519
-struct _ed25519_key;
-typedef struct _ed25519_key ed25519_key;
-
+int crypto_ed25519_init(ed25519_key *key);
 ed25519_key *crypto_ed25519_new();
 ed25519_key *crypto_ed25519_generate();
 void crypto_ed25519_free(ed25519_key *key);

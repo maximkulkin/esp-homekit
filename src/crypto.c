@@ -328,15 +328,25 @@ int crypto_chacha20poly1305_encrypt(
 }
 
 
+int crypto_ed25519_init(ed25519_key *key) {
+    int r = wc_ed25519_init(key);
+    if (r) {
+        return r;
+    }
+    return 0;
+}
+
+
 ed25519_key *crypto_ed25519_new() {
     ed25519_key *key = malloc(sizeof(ed25519_key));
-    int r = wc_ed25519_init(key);
+    int r = crypto_ed25519_init(key);
     if (r) {
         free(key);
         return NULL;
     }
     return key;
 }
+
 
 void crypto_ed25519_free(ed25519_key *key) {
     if (key)
