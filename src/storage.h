@@ -8,10 +8,10 @@ int homekit_storage_reset();
 int homekit_storage_init();
 
 void homekit_storage_save_accessory_id(const char *accessory_id);
-char *homekit_storage_load_accessory_id();
+int homekit_storage_load_accessory_id(char *data);
 
 void homekit_storage_save_accessory_key(const ed25519_key *key);
-ed25519_key *homekit_storage_load_accessory_key();
+int homekit_storage_load_accessory_key(ed25519_key *key);
 
 bool homekit_storage_can_add_pairing();
 int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device_key, byte permissions);

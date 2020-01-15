@@ -49,6 +49,8 @@
 struct _client_context_t;
 typedef struct _client_context_t client_context_t;
 
+#define ACCESSORY_ID_SIZE 17
+
 
 #define HOMEKIT_NOTIFY_EVENT(server, event) \
   if ((server)->config->on_event) \
@@ -90,8 +92,8 @@ typedef struct {
 
 
 typedef struct {
-    char *accessory_id;
-    ed25519_key *accessory_key;
+    char accessory_id[ACCESSORY_ID_SIZE + 1];
+    ed25519_key accessory_key;
 
     homekit_server_config_t *config;
 
@@ -157,8 +159,6 @@ homekit_server_t *server_new() {
     FD_ZERO(&server->fds);
     server->max_fd = 0;
     server->nfds = 0;
-    server->accessory_id = NULL;
-    server->accessory_key = NULL;
     server->config = NULL;
     server->paired = false;
     server->pairing_context = NULL;
@@ -168,12 +168,6 @@ homekit_server_t *server_new() {
 
 
 void server_free(homekit_server_t *server) {
-    if (server->accessory_id)
-        free(server->accessory_id);
-
-    if (server->accessory_key)
-        crypto_ed25519_free(server->accessory_key);
-
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
 
@@ -1383,10 +1377,10 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
             CLIENT_DEBUG(context, "Exporting accessory public key");
             size_t accessory_public_key_size = 0;
-            crypto_ed25519_export_public_key(context->server->accessory_key, NULL, &accessory_public_key_size);
+            crypto_ed25519_export_public_key(&context->server->accessory_key, NULL, &accessory_public_key_size);
 
             byte *accessory_public_key = malloc(accessory_public_key_size);
-            r = crypto_ed25519_export_public_key(context->server->accessory_key, accessory_public_key, &accessory_public_key_size);
+            r = crypto_ed25519_export_public_key(&context->server->accessory_key, accessory_public_key, &accessory_public_key_size);
             if (r) {
                 CLIENT_ERROR(context, "Failed to export accessory public key (code %d)", r);
 
@@ -1396,7 +1390,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 break;
             }
 
-            size_t accessory_id_size = strlen(context->server->accessory_id);
+            size_t accessory_id_size = sizeof(context->server->accessory_id) - 1;
             size_t accessory_info_size = HKDF_HASH_SIZE + accessory_id_size + accessory_public_key_size;
             byte *accessory_info = malloc(accessory_info_size);
 
@@ -1429,14 +1423,14 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             DEBUG_HEAP();
             size_t accessory_signature_size = 0;
             crypto_ed25519_sign(
-                context->server->accessory_key,
+                &context->server->accessory_key,
                 accessory_info, accessory_info_size,
                 NULL, &accessory_signature_size
             );
 
             byte *accessory_signature = malloc(accessory_signature_size);
             r = crypto_ed25519_sign(
-                context->server->accessory_key,
+                &context->server->accessory_key,
                 accessory_info, accessory_info_size,
                 accessory_signature, &accessory_signature_size
             );
@@ -1621,7 +1615,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             CLIENT_DEBUG(context, "Generating signature");
-            size_t accessory_id_size = strlen(context->server->accessory_id);
+            size_t accessory_id_size = sizeof(context->server->accessory_id) - 1;
             size_t accessory_info_size = my_key_public_size + accessory_id_size + tlv_device_public_key->size;
 
             byte *accessory_info = malloc(accessory_info_size);
@@ -1634,14 +1628,14 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             size_t accessory_signature_size = 0;
             crypto_ed25519_sign(
-                context->server->accessory_key,
+                &context->server->accessory_key,
                 accessory_info, accessory_info_size,
                 NULL, &accessory_signature_size
             );
 
             byte *accessory_signature = malloc(accessory_signature_size);
             r = crypto_ed25519_sign(
-                context->server->accessory_key,
+                &context->server->accessory_key,
                 accessory_info, accessory_info_size,
                 accessory_signature, &accessory_signature_size
             );
@@ -3393,9 +3387,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     homekit_mdns_configure_finalize();
 }
 
-char *homekit_accessory_id_generate() {
-    char *accessory_id = malloc(18);
-
+int homekit_accessory_id_generate(char *accessory_id) {
     byte buf[6];
     homekit_random_fill(buf, sizeof(buf));
 
@@ -3403,19 +3395,19 @@ char *homekit_accessory_id_generate() {
              buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
 
     INFO("Generated new accessory ID: %s", accessory_id);
-    return accessory_id;
+    return 0;
 }
 
-ed25519_key *homekit_accessory_key_generate() {
-    ed25519_key *key = crypto_ed25519_generate();
-    if (!key) {
+int homekit_accessory_key_generate(ed25519_key *key) {
+    int r = crypto_ed25519_generate(key);
+    if (r) {
         ERROR("Failed to generate accessory key");
-        return NULL;
+        return r;
     }
 
     INFO("Generated new accessory key");
 
-    return key;
+    return 0;
 }
 
 void homekit_server_task(void *args) {
@@ -3424,16 +3416,18 @@ void homekit_server_task(void *args) {
 
     int r = homekit_storage_init();
 
-    if (r == 0) {
-        server->accessory_id = homekit_storage_load_accessory_id();
-        server->accessory_key = homekit_storage_load_accessory_key();
-    }
-    if (!server->accessory_id || !server->accessory_key) {
-        server->accessory_id = homekit_accessory_id_generate();
+    if (!r)
+        r = homekit_storage_load_accessory_id(server->accessory_id);
+
+    if (!r)
+        r = homekit_storage_load_accessory_key(&server->accessory_key);
+
+    if (r) {
+        homekit_accessory_id_generate(server->accessory_id);
         homekit_storage_save_accessory_id(server->accessory_id);
 
-        server->accessory_key = homekit_accessory_key_generate();
-        homekit_storage_save_accessory_key(server->accessory_key);
+        homekit_accessory_key_generate(&server->accessory_key);
+        homekit_storage_save_accessory_key(&server->accessory_key);
     } else {
         INFO("Using existing accessory ID: %s", server->accessory_id);
     }
@@ -3546,16 +3540,12 @@ bool homekit_is_paired() {
 }
 
 int homekit_get_accessory_id(char *buffer, size_t size) {
-    char *accessory_id = homekit_storage_load_accessory_id();
-    if (!accessory_id)
-        return -2;
-
-    if (size < strlen(accessory_id) + 1)
+    if (size < ACCESSORY_ID_SIZE + 1)
         return -1;
 
-    strncpy(buffer, accessory_id, size);
-
-    free(accessory_id);
+    int r = homekit_storage_load_accessory_id(buffer);
+    if (r)
+        return r;
 
     return 0;
 }

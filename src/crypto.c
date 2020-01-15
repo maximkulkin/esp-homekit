@@ -353,18 +353,20 @@ void crypto_ed25519_free(ed25519_key *key) {
         free(key);
 }
 
-ed25519_key *crypto_ed25519_generate() {
-    ed25519_key *key = crypto_ed25519_new();
+int crypto_ed25519_generate(ed25519_key *key) {
+    int r;
+    r = crypto_ed25519_init(key);
+    if (r)
+        return r;
 
     WC_RNG rng;
-    int r = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, key);
+    r = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, key);
     if (r) {
         DEBUG("Failed to generate key (code %d)", r);
-        crypto_ed25519_free(key);
-        return NULL;
+        return r;
     }
 
-    return key;
+    return 0;
 }
 
 int crypto_ed25519_import_key(ed25519_key *key, const byte *data, size_t size) {

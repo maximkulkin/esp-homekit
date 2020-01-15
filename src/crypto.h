@@ -58,7 +58,7 @@ int crypto_chacha20poly1305_decrypt(
 // ED25519
 int crypto_ed25519_init(ed25519_key *key);
 ed25519_key *crypto_ed25519_new();
-ed25519_key *crypto_ed25519_generate();
+int crypto_ed25519_generate(ed25519_key *key);
 void crypto_ed25519_free(ed25519_key *key);
 
 int crypto_ed25519_import_key(

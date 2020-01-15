@@ -82,25 +82,24 @@ static char ishex(unsigned char c) {
     return isdigit(c) || (c >= 'A' && c <= 'F');
 }
 
-char *homekit_storage_load_accessory_id() {
-    byte data[ACCESSORY_ID_SIZE+1];
-    if (!spiflash_read(ACCESSORY_ID_ADDR, data, sizeof(data))) {
+int homekit_storage_load_accessory_id(char *data) {
+    if (!spiflash_read(ACCESSORY_ID_ADDR, (byte *)data, sizeof(data))) {
         ERROR("Failed to read accessory ID from flash");
-        return NULL;
+        return -1;
     }
     if (!data[0])
-        return NULL;
+        return -2;
     data[sizeof(data)-1] = 0;
 
     for (int i=0; i<17; i++) {
         if (i % 3 == 2) {
            if (data[i] != ':')
-               return NULL;
+               return -3;
         } else if (!ishex(data[i]))
-            return NULL;
+            return -4;
     }
 
-    return strndup((char *)data, sizeof(data));
+    return 0;
 }
 
 void homekit_storage_save_accessory_key(const ed25519_key *key) {
@@ -118,22 +117,21 @@ void homekit_storage_save_accessory_key(const ed25519_key *key) {
     }
 }
 
-ed25519_key *homekit_storage_load_accessory_key() {
+int homekit_storage_load_accessory_key(ed25519_key *key) {
     byte key_data[ACCESSORY_KEY_SIZE];
     if (!spiflash_read(ACCESSORY_KEY_ADDR, key_data, sizeof(key_data))) {
         ERROR("Failed to read accessory key from flash");
-        return NULL;
+        return -1;
     }
 
-    ed25519_key *key = crypto_ed25519_new();
+    crypto_ed25519_init(key);
     int r = crypto_ed25519_import_key(key, key_data, sizeof(key_data));
     if (r) {
         ERROR("Failed to import accessory key (code %d)", r);
-        crypto_ed25519_free(key);
-        return NULL;
+        return -2;
     }
 
-    return key;
+    return 0;
 }
 
 // TODO: figure out alignment issues
