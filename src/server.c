@@ -3407,6 +3407,11 @@ void homekit_server_task(void *args) {
     }
 
     if (r) {
+        if (r < 0) {
+            INFO("Resetting HomeKit storage");
+            homekit_storage_reset();
+        }
+
         homekit_accessory_id_generate(server->accessory_id);
         homekit_storage_save_accessory_id(server->accessory_id);
 

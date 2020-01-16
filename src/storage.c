@@ -31,17 +31,6 @@
 const char magic1[] = "HAP";
 
 
-int homekit_storage_reset() {
-    byte blank[sizeof(magic1)];
-    if (!spiflash_write(MAGIC_ADDR, blank, sizeof(blank))) {
-        ERROR("Failed to reset flash");
-        return -1;
-    }
-
-    return 0;
-}
-
-
 int homekit_storage_init() {
     char magic[sizeof(magic1)];
     memset(magic, 0, sizeof(magic));
@@ -67,6 +56,19 @@ int homekit_storage_init() {
     }
 
     return 0;
+}
+
+
+int homekit_storage_reset() {
+    byte blank[sizeof(magic1)];
+    memset(blank, 0, sizeof(blank));
+
+    if (!spiflash_write(MAGIC_ADDR, blank, sizeof(blank))) {
+        ERROR("Failed to reset HomeKit storage");
+        return -1;
+    }
+
+    return homekit_storage_init();
 }
 
 
@@ -186,12 +188,6 @@ static int compact_data() {
         free(data);
         return -1;
     }
-    if (homekit_storage_init() < 0) {
-        ERROR("Failed to compact data: error initializing flash");
-        free(data);
-        return -1;
-    }
-
     if (!spiflash_write(SPIFLASH_BASE_ADDR, data, PAIRINGS_OFFSET + sizeof(pairing_data_t)*next_pairing_idx)) {
         ERROR("Failed to compact data: error writing compacted data");
         free(data);
