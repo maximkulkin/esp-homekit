@@ -1,5 +1,6 @@
 #include <string.h>
 #include <ctype.h>
+#include "constants.h"
 #include "debug.h"
 #include "crypto.h"
 #include "pairing.h"
@@ -138,7 +139,7 @@ int homekit_storage_load_accessory_key(ed25519_key *key) {
 typedef struct {
     char magic[sizeof(magic1)];
     byte permissions;
-    char device_id[36];
+    char device_id[DEVICE_ID_SIZE];
     byte device_public_key[32];
 
     byte _reserved[7]; // align record to be 80 bytes
@@ -335,7 +336,8 @@ int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing) {
             }
 
             pairing->id = i;
-            strncpy(pairing->device_id, data.device_id, sizeof(pairing->device_id));
+            strncpy(pairing->device_id, data.device_id, DEVICE_ID_SIZE);
+            pairing->device_id[DEVICE_ID_SIZE] = 0;
             pairing->permissions = data.permissions;
 
             return 0;
@@ -370,7 +372,8 @@ int homekit_storage_next_pairing(pairing_iterator_t *it, pairing_t *pairing) {
             }
 
             pairing->id = id;
-            strncpy(pairing->device_id, data.device_id, sizeof(pairing->device_id));
+            strncpy(pairing->device_id, data.device_id, DEVICE_ID_SIZE);
+            pairing->device_id[DEVICE_ID_SIZE] = 0;
             pairing->permissions = data.permissions;
 
             return 0;
