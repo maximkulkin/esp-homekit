@@ -26,6 +26,7 @@
 #include <wolfssl/wolfcrypt/hash.h>
 #include <wolfssl/wolfcrypt/coding.h>
 
+#include "constants.h"
 #include "base64.h"
 #include "crypto.h"
 #include "pairing.h"
@@ -48,8 +49,6 @@
 
 struct _client_context_t;
 typedef struct _client_context_t client_context_t;
-
-#define ACCESSORY_ID_SIZE 17
 
 
 #define HOMEKIT_NOTIFY_EVENT(server, event) \
@@ -3375,7 +3374,7 @@ int homekit_accessory_id_generate(char *accessory_id) {
     byte buf[6];
     homekit_random_fill(buf, sizeof(buf));
 
-    snprintf(accessory_id, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+    snprintf(accessory_id, ACCESSORY_ID_SIZE+1, "%02X:%02X:%02X:%02X:%02X:%02X",
              buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
 
     INFO("Generated new accessory ID: %s", accessory_id);

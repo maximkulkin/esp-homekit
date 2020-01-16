@@ -26,7 +26,6 @@
 
 #define MAX_PAIRINGS 16
 
-#define ACCESSORY_ID_SIZE   17
 #define ACCESSORY_KEY_SIZE  64
 
 const char magic1[] = "HAP";
@@ -72,7 +71,7 @@ int homekit_storage_init() {
 
 
 void homekit_storage_save_accessory_id(const char *accessory_id) {
-    if (!spiflash_write(ACCESSORY_ID_ADDR, (byte *)accessory_id, strlen(accessory_id))) {
+    if (!spiflash_write(ACCESSORY_ID_ADDR, (byte *)accessory_id, ACCESSORY_ID_SIZE)) {
         ERROR("Failed to write accessory ID to flash");
     }
 }
@@ -84,15 +83,15 @@ static char ishex(unsigned char c) {
 }
 
 int homekit_storage_load_accessory_id(char *data) {
-    if (!spiflash_read(ACCESSORY_ID_ADDR, (byte *)data, sizeof(data))) {
+    if (!spiflash_read(ACCESSORY_ID_ADDR, (byte *)data, ACCESSORY_ID_SIZE)) {
         ERROR("Failed to read accessory ID from flash");
         return -1;
     }
     if (!data[0])
         return -2;
-    data[sizeof(data)-1] = 0;
+    data[ACCESSORY_ID_SIZE] = 0;
 
-    for (int i=0; i<17; i++) {
+    for (int i=0; i<ACCESSORY_ID_SIZE; i++) {
         if (i % 3 == 2) {
            if (data[i] != ':')
                return -3;
