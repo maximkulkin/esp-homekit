@@ -1044,6 +1044,8 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
     switch(tlv_get_integer_value(message, TLVType_State, -1)) {
         case 1: {
+            // temporary workaround: mdns discovery lost during pairing
+            homekit_setup_mdns(context->server);
             CLIENT_INFO(context, "Pair Setup Step 1/3");
             DEBUG_HEAP();
             if (context->server->paired) {
