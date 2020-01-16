@@ -3400,11 +3400,12 @@ void homekit_server_task(void *args) {
 
     int r = homekit_storage_init();
 
-    if (!r)
+    if (r == 0) {
         r = homekit_storage_load_accessory_id(server->accessory_id);
 
-    if (!r)
-        r = homekit_storage_load_accessory_key(&server->accessory_key);
+        if (!r)
+            r = homekit_storage_load_accessory_key(&server->accessory_key);
+    }
 
     if (r) {
         homekit_accessory_id_generate(server->accessory_id);
