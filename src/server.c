@@ -655,8 +655,10 @@ int client_decrypt(
         return -1;
 
     const size_t block_size = 1024 + 16 + 2;
-    size_t required_decrypted_size =
-        payload_size / block_size * 1024 + payload_size % block_size - 16 - 2;
+    size_t required_decrypted_size = payload_size / block_size * 1024;
+    if (payload_size % block_size > 0)
+       required_decrypted_size += payload_size % block_size - 16 - 2;
+
     if (*decrypted_size < required_decrypted_size) {
         *decrypted_size = required_decrypted_size;
         return -2;
@@ -696,7 +698,7 @@ int client_decrypt(
         }
 
         decrypted_offset += decrypted_len;
-        payload_offset += chunk_size + 0x12; // 0x10 is for some auth bytes
+        payload_offset += chunk_size + 18;
     }
 
     return payload_offset;
