@@ -97,6 +97,8 @@ typedef struct {
     homekit_server_config_t *config;
 
     bool paired;
+    bool discoverable;
+
     pairing_context_t *pairing_context;
 
     int listen_fd;
@@ -160,6 +162,7 @@ homekit_server_t *server_new() {
     server->nfds = 0;
     server->config = NULL;
     server->paired = false;
+    server->discoverable = false;
     server->pairing_context = NULL;
     server->clients = NULL;
     return server;
@@ -1501,7 +1504,6 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             context->server->pairing_context = NULL;
 
             context->server->paired = 1;
-            homekit_setup_mdns(context->server);
 
             CLIENT_INFO(context, "Successfully paired");
 
@@ -2944,6 +2946,8 @@ int homekit_server_on_message_complete(http_parser *parser) {
             }
         }
     } else {
+        if(context->server->paired&&context->server->discoverable)
+	          homekit_setup_mdns(context->server);
         switch(context->endpoint) {
             case HOMEKIT_ENDPOINT_IDENTIFY: {
                 homekit_server_on_identify(context);
@@ -3368,7 +3372,8 @@ void homekit_setup_mdns(homekit_server_t *server) {
 
         homekit_mdns_add_txt("sh", "%s", encodedHash);
     }
-
+    server->discoverable = !server->paired;
+  
     homekit_mdns_configure_finalize();
 }
 
