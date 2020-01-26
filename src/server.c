@@ -3131,6 +3131,9 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     INFO("Got new client connection: %d from %s", s, address_buffer);
 
+    int v=1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &v, sizeof(v));
+#if 0
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
 
@@ -3145,6 +3148,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     const int maxpkt = 4; /* Drop connection after 4 probes without response */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
+#endif
 
     client_context_t *context = client_context_new();
     context->server = server;
@@ -3255,6 +3259,8 @@ static void homekit_run_server(homekit_server_t *server)
 
     struct sockaddr_in serv_addr;
     server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int v=1;
+    setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, &v, sizeof(v));
     memset(&serv_addr, '0', sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
