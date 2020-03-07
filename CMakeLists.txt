@@ -1,6 +1,5 @@
 set(HOMEKIT_SRCS
   "src/json.c"
-  "src/pairing.c"
   "src/storage.c"
   "src/tlv.c "
   "src/server.c"
