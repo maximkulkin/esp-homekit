@@ -10,8 +10,13 @@
 
 #pragma GCC diagnostic ignored "-Wunused-value"
 
+#ifdef CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR
+#define SPIFLASH_BASE_ADDR CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR
+#endif
+#ifndef CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR
 #ifndef SPIFLASH_BASE_ADDR
 #define SPIFLASH_BASE_ADDR 0x200000
+#endif
 #endif
 
 #define MAGIC_OFFSET           0
