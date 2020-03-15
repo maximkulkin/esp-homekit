@@ -2,7 +2,7 @@ menu "HomeKit"
 
 config HOMEKIT_SPI_FLASH_BASE_ADDR
     string "SPI flash address for storing HomeKit data"
-    default 0x200000
+    default "0x200000"
     help
         SPI flash address to store HomeKit related persisted data
 
