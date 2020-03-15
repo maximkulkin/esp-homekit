@@ -4,6 +4,14 @@ Apple HomeKit accessory server library for
 
 See [esp-homekit-demo](https://github.com/maximkulkin/esp-homekit-demo) for examples.
 
+## Building for ESP-IDF >= 4.0
+
+In ESP-IDF >= 4.0 there is a SPI flash write protection that checks if area written
+to is inside writable parition. Haven't figured out yet how esp-homekit can modify
+parition table automatically, so for the time being you need to disable that check in
+menuconfig: go to Component config -> SPI Flash driver -> Write to dangerous flash
+regions and set it to "Allowed".
+
 ## QR code pairing
 
 You can use a QR code to pair with accessories. To enable that feature, you need to
