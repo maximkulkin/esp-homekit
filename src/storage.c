@@ -183,7 +183,7 @@ static int compact_data() {
         return 0;
     }
 
-    if (homekit_storage_reset()) {
+    if (homekit_storage_reset() <= 0) {
         ERROR("Failed to compact HomeKit storage: error resetting flash");
         free(data);
         return -1;
