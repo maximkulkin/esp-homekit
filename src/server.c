@@ -2298,6 +2298,12 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         max_value = *ch->max_value;
 
                     double value = j_value->valuedouble;
+                    if (j_value->type == cJSON_True) {
+                        value = 1;
+                    } else if (j_value->type == cJSON_False) {
+                        value = 0;
+                    }
+
                     if (value < min_value || value > max_value) {
                         CLIENT_ERROR(context, "Failed to update %d.%d: value %g is not in range %g..%g",
                                      aid, iid, value, min_value, max_value);
