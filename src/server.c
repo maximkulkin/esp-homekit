@@ -3088,16 +3088,6 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
         server->pairing_context = NULL;
     }
 
-    if (server->clients == context) {
-        server->clients = context->next;
-    } else {
-        client_context_t *c = server->clients;
-        while (c->next && c->next != context)
-            c = c->next;
-        if (c->next)
-            c->next = c->next->next;
-    }
-
     homekit_accessories_clear_notify_callbacks(
         server->config->accessories,
         client_notify_characteristic,
@@ -3239,15 +3229,22 @@ void homekit_server_process_notifications(homekit_server_t *server) {
 
 
 void homekit_server_close_clients(homekit_server_t *server) {
-    client_context_t *context = server->clients;
-    while (context) {
-        client_context_t *next = context->next;
+    client_context_t head;
+    head.next = server->clients;
 
-        if (context->disconnect)
-            homekit_server_close_client(server, context);
+    client_context_t *context = &head;
+    while (context->next) {
+        client_context_t *tmp = context->next;
 
-        context = next;
+        if (tmp->disconnect) {
+            context->next = tmp->next;
+            homekit_server_close_client(server, tmp);
+        } else {
+            context = tmp;
+        }
     }
+
+    server->clients = head.next;
 }
 
 
