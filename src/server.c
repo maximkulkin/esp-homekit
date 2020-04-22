@@ -102,8 +102,8 @@ typedef struct {
     int listen_fd;
     fd_set fds;
     int max_fd;
-    int nfds;
 
+    int client_count;
     client_context_t *clients;
 } homekit_server_t;
 
@@ -157,7 +157,7 @@ homekit_server_t *server_new() {
     homekit_server_t *server = malloc(sizeof(homekit_server_t));
     FD_ZERO(&server->fds);
     server->max_fd = 0;
-    server->nfds = 0;
+    server->client_count = 0;
     server->config = NULL;
     server->paired = false;
     server->pairing_context = NULL;
@@ -3079,7 +3079,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
 
     FD_CLR(context->socket, &server->fds);
     // TODO: recalc server->max_fd ?
-    server->nfds--;
+    server->client_count--;
 
     close(context->socket);
 
@@ -3115,7 +3115,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     if (s < 0)
         return NULL;
 
-    if (server->nfds > HOMEKIT_MAX_CLIENTS) {
+    if (server->client_count >= HOMEKIT_MAX_CLIENTS) {
         INFO("No more room for client connections (max %d)", HOMEKIT_MAX_CLIENTS);
         close(s);
         return NULL;
@@ -3156,7 +3156,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     server->clients = context;
 
     FD_SET(s, &server->fds);
-    server->nfds++;
+    server->client_count++;
     if (s > server->max_fd)
         server->max_fd = s;
 
@@ -3266,7 +3266,7 @@ static void homekit_run_server(homekit_server_t *server)
 
     FD_SET(server->listen_fd, &server->fds);
     server->max_fd = server->listen_fd;
-    server->nfds = 1;
+    server->client_count = 0;
 
     for (;;) {
         fd_set read_fds;
