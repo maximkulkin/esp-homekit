@@ -3083,15 +3083,15 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
 
     close(context->socket);
 
-    if (context->server->pairing_context && context->server->pairing_context->client == context) {
-        pairing_context_free(context->server->pairing_context);
-        context->server->pairing_context = NULL;
+    if (server->pairing_context && server->pairing_context->client == context) {
+        pairing_context_free(server->pairing_context);
+        server->pairing_context = NULL;
     }
 
-    if (context->server->clients == context) {
-        context->server->clients = context->next;
+    if (server->clients == context) {
+        server->clients = context->next;
     } else {
-        client_context_t *c = context->server->clients;
+        client_context_t *c = server->clients;
         while (c->next && c->next != context)
             c = c->next;
         if (c->next)
@@ -3099,7 +3099,7 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     }
 
     homekit_accessories_clear_notify_callbacks(
-        context->server->config->accessories,
+        server->config->accessories,
         client_notify_characteristic,
         context
     );
