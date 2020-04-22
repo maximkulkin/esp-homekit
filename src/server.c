@@ -3078,7 +3078,6 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     CLIENT_INFO(context, "Closing client connection");
 
     FD_CLR(context->socket, &server->fds);
-    // TODO: recalc server->max_fd ?
     server->client_count--;
 
     close(context->socket);
@@ -3229,6 +3228,8 @@ void homekit_server_process_notifications(homekit_server_t *server) {
 
 
 void homekit_server_close_clients(homekit_server_t *server) {
+    int max_fd = server->listen_fd;
+
     client_context_t head;
     head.next = server->clients;
 
@@ -3240,11 +3241,15 @@ void homekit_server_close_clients(homekit_server_t *server) {
             context->next = tmp->next;
             homekit_server_close_client(server, tmp);
         } else {
+            if (tmp->socket > max_fd)
+                max_fd = tmp->socket;
+
             context = tmp;
         }
     }
 
     server->clients = head.next;
+    server->max_fd = max_fd;
 }
 
 
