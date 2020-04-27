@@ -95,6 +95,9 @@ void json_write(json_stream *json, const char *format, ...) {
     }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+
 void json_object_start(json_stream *json) {
     if (json->state == JSON_STATE_ERROR)
         return;
@@ -374,4 +377,4 @@ void json_null(json_stream *json) {
             json->state = JSON_STATE_ERROR;
     }
 }
-
+#pragma GCC diagnostic pop
