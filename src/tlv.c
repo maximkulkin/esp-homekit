@@ -6,6 +6,9 @@
 
 tlv_values_t *tlv_new() {
     tlv_values_t *values = malloc(sizeof(tlv_values_t));
+    if (!values)
+        return NULL;
+
     values->head = NULL;
     return values;
 }
@@ -26,6 +29,9 @@ void tlv_free(tlv_values_t *values) {
 
 int tlv_add_value_(tlv_values_t *values, byte type, byte *value, size_t size) {
     tlv_t *tlv = malloc(sizeof(tlv_t));
+    if (!tlv) {
+        return TLV_ERROR_MEMORY;
+    }
     tlv->type = type;
     tlv->size = size;
     tlv->value = value;
@@ -48,6 +54,9 @@ int tlv_add_value(tlv_values_t *values, byte type, const byte *value, size_t siz
     byte *data = NULL;
     if (size) {
         data = malloc(size);
+        if (!data) {
+            return TLV_ERROR_MEMORY;
+        }
         memcpy(data, value, size);
     }
     return tlv_add_value_(values, type, data, size);
@@ -72,6 +81,8 @@ int tlv_add_tlv_value(tlv_values_t *values, byte type, tlv_values_t *value) {
     size_t tlv_size = 0;
     tlv_format(value, NULL, &tlv_size);
     byte *tlv_data = malloc(tlv_size);
+    if (!tlv_data)
+        return TLV_ERROR_MEMORY;
     int r = tlv_format(value, tlv_data, &tlv_size);
     if (r) {
         free(tlv_data);
@@ -146,7 +157,7 @@ int tlv_format(const tlv_values_t *values, byte *buffer, size_t *size) {
 
     if (*size < required_size) {
         *size = required_size;
-        return -1;
+        return TLV_ERROR_INSUFFICIENT_SIZE;
     }
 
     *size = required_size;
@@ -203,6 +214,9 @@ int tlv_parse(const byte *buffer, size_t length, tlv_values_t *values) {
         // allocate memory to hold all pieces of chunked data and copy data there
         if (size != 0) {
             data = malloc(size);
+            if (!data)
+                return TLV_ERROR_MEMORY;
+
             byte *p = data;
 
             size_t remaining = size;

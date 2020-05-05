@@ -1,6 +1,9 @@
 #ifndef __TLV_H__
 #define __TLV_H__
 
+#define TLV_ERROR_MEMORY -1
+#define TLV_ERROR_INSUFFICIENT_SIZE -2
+
 typedef unsigned char byte;
 
 typedef struct _tlv {

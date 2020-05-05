@@ -588,7 +588,11 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                                 json_string(json, "");
                                 break;
                             }
-                            tlv_format(v.tlv_values, tlv_data, &tlv_size);
+                            if (tlv_format(v.tlv_values, tlv_data, &tlv_size)) {
+                                CLIENT_ERROR(client, "Failed to format TLV characteristic data");
+                                json_string(json, "");
+                                break;
+                            }
 
                             size_t encoded_tlv_size = base64_encoded_size(tlv_data, tlv_size);
                             byte *encoded_tlv_data = malloc(encoded_tlv_size + 1);
@@ -882,6 +886,10 @@ void send_tlv_response(client_context_t *context, tlv_values_t *values);
 
 void send_tlv_error_response(client_context_t *context, int state, TLVError error) {
     tlv_values_t *response = tlv_new();
+    if (!response) {
+        // TODO: panic?
+        return;
+    }
     tlv_add_integer_value(response, TLVType_State, 1, state);
     tlv_add_integer_value(response, TLVType_Error, 1, error);
 
@@ -1077,7 +1085,17 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 #endif
 
     tlv_values_t *message = tlv_new();
-    tlv_parse(data, size, message);
+    if (!message) {
+        CLIENT_ERROR(context, "Failed to allocate memory for TLV payload");
+        send_tlv_error_response(context, 2, TLVError_Unknown);
+        return;
+    }
+    if (tlv_parse(data, size, message)) {
+        CLIENT_ERROR(context, "Failed to parse TLV payload");
+        tlv_free(message);
+        send_tlv_error_response(context, 2, TLVError_Unknown);
+        return;
+    }
 
     TLV_DEBUG(message);
 
@@ -1189,6 +1207,16 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             tlv_values_t *response = tlv_new();
+            if (!response) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+
+                free(salt);
+                pairing_context_free(context->server->pairing_context);
+                context->server->pairing_context = NULL;
+
+                send_tlv_error_response(context, 2, TLVError_Unknown);
+                break;
+            }
             tlv_add_value(response, TLVType_PublicKey, context->server->pairing_context->public_key, context->server->pairing_context->public_key_size);
             tlv_add_value(response, TLVType_Salt, salt, salt_size);
             tlv_add_integer_value(response, TLVType_State, 1, 2);
@@ -1256,6 +1284,12 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             r = crypto_srp_get_proof(context->server->pairing_context->srp, server_proof, &server_proof_size);
 
             tlv_values_t *response = tlv_new();
+            if (!response) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+                free(server_proof);
+                send_tlv_error_response(context, 4, TLVError_Unknown);
+                break;
+            }
             tlv_add_integer_value(response, TLVType_State, 1, 4);
             tlv_add_value(response, TLVType_Proof, server_proof, server_proof_size);
 
@@ -1327,6 +1361,15 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             tlv_values_t *decrypted_message = tlv_new();
+            if (!decrypted_message) {
+                CLIENT_ERROR(context, "Failed to allocate memory for decrypted TLV");
+
+                free(decrypted_data);
+
+                send_tlv_error_response(context, 6, TLVError_Authentication);
+                break;
+            }
+
             r = tlv_parse(decrypted_data, decrypted_data_size, decrypted_message);
             if (r) {
                 CLIENT_ERROR(context, "Failed to parse decrypted TLV (code %d)", r);
@@ -1569,6 +1612,16 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             free(accessory_info);
 
             tlv_values_t *response_message = tlv_new();
+            if (!response_message) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+
+                free(accessory_signature);
+                free(accessory_public_key);
+
+                send_tlv_error_response(context, 6, TLVError_Unknown);
+                break;
+            }
+
             tlv_add_value(response_message, TLVType_Identifier,
                           (byte *)context->server->accessory_id, accessory_id_size);
             tlv_add_value(response_message, TLVType_PublicKey,
@@ -1645,6 +1698,15 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
             }
 
             tlv_values_t *response = tlv_new();
+            if (!response) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+
+                free(encrypted_response_data);
+
+                send_tlv_error_response(context, 6, TLVError_Unknown);
+                break;
+            }
+
             tlv_add_integer_value(response, TLVType_State, 1, 6);
             tlv_add_value(response, TLVType_EncryptedData,
                           encrypted_response_data, encrypted_response_data_size);
@@ -1684,12 +1746,22 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
     homekit_overclock_start();
 #endif
 
+    int r;
+
     tlv_values_t *message = tlv_new();
-    tlv_parse(data, size, message);
+    if (!message) {
+        CLIENT_ERROR(context, "Failed to allocate memory for TLV payload");
+        return;
+    }
+
+    r = tlv_parse(data, size, message);
+    if (r) {
+        CLIENT_ERROR(context, "Failed to parse TLV payload (code %d)", r);
+        tlv_free(message);
+        return;
+    }
 
     TLV_DEBUG(message);
-
-    int r;
 
     switch(tlv_get_integer_value(message, TLVType_State, -1)) {
         case 1: {
@@ -1836,6 +1908,14 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             tlv_values_t *sub_response = tlv_new();
+            if (!sub_response) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV sub response");
+                free(accessory_signature);
+                free(shared_secret);
+                free(my_key_public);
+                send_tlv_error_response(context, 2, TLVError_Unknown);
+                break;
+            }
             tlv_add_value(sub_response, TLVType_Identifier,
                           (const byte *)context->server->accessory_id, accessory_id_size);
             tlv_add_value(sub_response, TLVType_Signature,
@@ -1944,6 +2024,15 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             }
 
             tlv_values_t *response = tlv_new();
+            if (!response) {
+                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+                free(encrypted_response_data);
+                free(session_key);
+                free(shared_secret);
+                free(my_key_public);
+                send_tlv_error_response(context, 2, TLVError_Unknown);
+                break;
+            }
             tlv_add_integer_value(response, TLVType_State, 1, 2);
             tlv_add_value(response, TLVType_PublicKey,
                           my_key_public, my_key_public_size);
@@ -2924,11 +3013,16 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
     tlv_values_t *message = tlv_new();
     if (!message) {
-        CLIENT_ERROR(context, "Failed to allocate memory for TLV data");
+        CLIENT_ERROR(context, "Failed to allocate memory for TLV payload");
         send_tlv_error_response(context, 2, TLVError_Unknown);
         return;
     }
-    tlv_parse(data, size, message);
+    if (tlv_parse(data, size, message)) {
+        CLIENT_ERROR(context, "Failed to parse TLV payload");
+        tlv_free(message);
+        send_tlv_error_response(context, 2, TLVError_Unknown);
+        return;
+    }
 
     TLV_DEBUG(message);
 
