@@ -3305,17 +3305,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
     tlv_free(message);
 }
 
-void homekit_server_on_reset(client_context_t *context) {
-    INFO("Reset");
-
-    homekit_server_reset();
-    send_204_response(context);
-
-    vTaskDelay(3000 / portTICK_PERIOD_MS);
-
-    homekit_system_restart();
-}
-
 void homekit_server_on_resource(client_context_t *context) {
     CLIENT_INFO(context, "Resource");
     DEBUG_HEAP();
