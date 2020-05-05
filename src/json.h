@@ -10,6 +10,9 @@ typedef void (*json_flush_callback)(uint8_t *buffer, size_t size, void *context)
 json_stream *json_new(size_t buffer_size, json_flush_callback on_flush, void *context);
 void json_free(json_stream *json);
 
+void json_set_context(json_stream *json, void *context);
+
+void json_reset(json_stream *json);
 void json_flush(json_stream *json);
 
 void json_object_start(json_stream *json);

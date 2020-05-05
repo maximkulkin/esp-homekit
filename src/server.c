@@ -103,6 +103,8 @@ typedef struct {
     fd_set fds;
     int max_fd;
 
+    json_stream *json;
+
     int client_count;
     client_context_t *clients;
 } homekit_server_t;
@@ -151,6 +153,7 @@ typedef struct {
 
 void client_context_free(client_context_t *c);
 void pairing_context_free(pairing_context_t *context);
+void client_send_chunk(byte *data, size_t size, void *arg);
 
 
 homekit_server_t *server_new() {
@@ -162,11 +165,22 @@ homekit_server_t *server_new() {
     server->paired = false;
     server->pairing_context = NULL;
     server->clients = NULL;
+
+    server->json = json_new(1024, client_send_chunk, NULL);
+    if (!server->json) {
+        free(server);
+        return NULL;
+    }
+
     return server;
 }
 
 
 void server_free(homekit_server_t *server) {
+    if (server->json) {
+        json_free(server->json);
+    }
+
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
 
@@ -800,9 +814,11 @@ void send_client_events(client_context_t *context, client_event_t *events) {
 
     client_send(context, http_headers, sizeof(http_headers)-1);
 
-    // ~35 bytes per event JSON
-    // 256 should be enough for ~7 characteristic updates
-    json_stream *json = json_new(256, client_send_chunk, context);
+    json_stream *json = context->server->json;
+
+    json_set_context(json, context);
+    json_reset(json);
+
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
@@ -819,7 +835,6 @@ void send_client_events(client_context_t *context, client_event_t *events) {
     json_object_end(json);
 
     json_flush(json);
-    json_free(json);
 
     client_send_chunk(NULL, 0, context);
 }
@@ -1964,7 +1979,10 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
     client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
 
-    json_stream *json = json_new(1024, client_send_chunk, context);
+    json_stream *json = context->server->json;
+    json_set_context(json, context);
+    json_reset(json);
+
     json_object_start(json);
     json_string(json, "accessories"); json_array_start(json);
 
@@ -2022,7 +2040,6 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     json_object_end(json); // response
 
     json_flush(json);
-    json_free(json);
 
     client_send_chunk(NULL, 0, context);
 }
@@ -2101,7 +2118,10 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
     }
 
-    json_stream *json = json_new(256, client_send_chunk, context);
+    json_stream *json = context->server->json;
+    json_set_context(json, context);
+    json_reset(json);
+
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
@@ -2144,7 +2164,6 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     json_object_end(json); // response
 
     json_flush(json);
-    json_free(json);
 
     client_send_chunk(NULL, 0, context);
 
@@ -2564,10 +2583,13 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
         send_204_response(context);
     } else {
+        json_stream *json1 = context->server->json;
+        json_set_context(json1, context);
+        json_reset(json1);
+
         CLIENT_DEBUG(context, "There were processing errors, sending Multi-Status response");
         client_send(context, json_207_response_headers, sizeof(json_207_response_headers)-1);
 
-        json_stream *json1 = json_new(1024, client_send_chunk, context);
         json_object_start(json1);
         json_string(json1, "characteristics"); json_array_start(json1);
 
@@ -2585,7 +2607,6 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
         json_object_end(json1); // response
 
         json_flush(json1);
-        json_free(json1);
 
         client_send_chunk(NULL, 0, context);
     }

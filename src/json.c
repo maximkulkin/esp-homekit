@@ -61,6 +61,18 @@ void json_free(json_stream *json) {
     free(json);
 }
 
+void json_set_context(json_stream *json, void *context) {
+    json->context = context;
+}
+
+
+void json_reset(json_stream *json) {
+    json->pos = 0;
+    json->state = JSON_STATE_START;
+    json->nesting_idx = 0;
+}
+
+
 void json_flush(json_stream *json) {
     if (!json->pos)
         return;
