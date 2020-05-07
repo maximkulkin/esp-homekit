@@ -14,7 +14,9 @@ ifdef component_compile_rules
     $(error Please include http-parser component prior to homekit)
     endif
 
-    # Base flash address where persisted information (e.g. pairings) will be stored
+    HOMEKIT_STORAGE_TYPE ?= spiflash
+    # If HOMEKIT_STORAGE_TYPE==spiflash,
+    # base flash address where persisted information (e.g. pairings) will be stored
     HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x100000
     # Maximum number of simultaneous clients allowed.
     # Each connected client requires ~1100-1200 bytes of RAM.
@@ -33,6 +35,19 @@ ifdef component_compile_rules
 
     homekit_INC_DIR = $(homekit_ROOT)/include $(homekit_ROOT)/src
     homekit_SRC_DIR = $(homekit_ROOT)/src
+    homekit_SRC_FILES = $(addprefix $(homekit_SRC_DIR)/, \
+        accessories.c \
+        base64.c \
+        crypto.c \
+        debug.c \
+        json.c \
+        mdnsresponder.c \
+        port.c \
+        query_params.c \
+        server.c \
+        storage_$(HOMEKIT_STORAGE_TYPE).c \
+        tlv.c \
+    )
 
     $(eval $(call component_compile_rules,homekit))
 
@@ -88,6 +103,6 @@ else
 
     COMPONENT_PRIV_INCLUDEDIRS = src
     COMPONENT_SRCDIRS = src
-    COMPONENT_OBJEXCLUDE = src/mdnsresponder.o
+    COMPONENT_OBJEXCLUDE = src/mdnsresponder.o src/storage_sysparams.o
 
 endif

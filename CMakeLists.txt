@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS
         "src/json.c"
-        "src/storage.c"
+        "src/storage_spiflash.c"
         "src/tlv.c"
         "src/server.c"
         "src/debug.c"
@@ -15,7 +15,7 @@ idf_component_register(
     REQUIRES wolfssl json http-parser mdns spi_flash
 )
 
-set_source_files_properties(src/storage.c
+set_source_files_properties(src/storage_spiflash.c
     PROPERTIES COMPILE_FLAGS
     -Wno-error=unused-value
 )
