@@ -21,6 +21,7 @@ int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing);
 
 typedef struct {
     int idx;
+    void *context;
 } pairing_iterator_t;
 
 

@@ -14,6 +14,10 @@ ifdef component_compile_rules
     $(error Please include http-parser component prior to homekit)
     endif
 
+    # Choose between "spiflash" and "sysparams" storage
+    # * spiflash uses custom storage format and occupies one sector on SPI flash
+    #   (configured via HOMEKIT_SPI_FLASH_BASE_ADDR variable)
+    # * sysparams uses sysparams subsystem to store all HomeKit state
     HOMEKIT_STORAGE_TYPE ?= spiflash
     # If HOMEKIT_STORAGE_TYPE==spiflash,
     # base flash address where persisted information (e.g. pairings) will be stored
