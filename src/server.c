@@ -122,7 +122,7 @@ struct _client_context_t {
     size_t body_length;
     http_parser parser;
 
-    int pairing_id;
+    char device_id[DEVICE_ID_SIZE];
     byte permissions;
 
     bool disconnect;
@@ -325,7 +325,7 @@ client_context_t *client_context_new() {
     http_parser_init(&c->parser, HTTP_REQUEST);
     c->parser.data = c;
 
-    c->pairing_id = -1;
+    c->device_id[0] = 0;
     c->encrypted = false;
     c->count_reads = 0;
     c->count_writes = 0;
@@ -1854,9 +1854,6 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
             CLIENT_INFO(context, "Found pairing with %s", device_id);
             free(device_id);
 
-            byte permissions = pairing.permissions;
-            int pairing_id = pairing.id;
-
             size_t device_info_size =
                 context->verify_context->device_public_key_size +
                 context->verify_context->accessory_public_key_size +
@@ -1934,8 +1931,8 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             send_tlv_response(context, response);
 
-            context->pairing_id = pairing_id;
-            context->permissions = permissions;
+            strncpy(context->device_id, pairing.device_id, DEVICE_ID_SIZE);
+            context->permissions = pairing.permissions;
             context->encrypted = true;
 
             HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_CLIENT_VERIFIED);
@@ -2760,7 +2757,7 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
                 client_context_t *c = context->server->clients;
                 while (c) {
-                    if (c->pairing_id == pairing.id)
+                    if (strncmp(c->device_id, pairing.device_id, DEVICE_ID_SIZE) == 0)
                         c->disconnect = true;
                     c = c->next;
                 }
