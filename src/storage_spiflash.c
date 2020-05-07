@@ -26,8 +26,6 @@
 
 #define MAX_PAIRINGS 16
 
-#define ACCESSORY_KEY_SIZE  64
-
 const char magic1[] = "HAP";
 
 
