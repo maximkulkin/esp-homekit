@@ -91,7 +91,7 @@ else
 
     COMPONENT_PRIV_INCLUDEDIRS = src
     COMPONENT_SRCDIRS = src
-    COMPONENT_OBJEXCLUDE = src/mdnsresponder.o
+    COMPONENT_OBJEXCLUDE = src/homekit_mdns.o src/homekit_mdns_debug.o
 
 erase_homekit_data:
 	$(ESPTOOLPY_SERIAL) erase_region $(CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR) 4096
