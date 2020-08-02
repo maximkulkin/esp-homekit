@@ -357,7 +357,7 @@ client_context_t *client_context_new() {
 
     c->disconnect = false;
 
-    c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t*));
+    c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t));
     c->verify_context = NULL;
 
     c->next = NULL;
@@ -771,13 +771,9 @@ void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t 
         return;
     }
 
-    characteristic_event_t *event = malloc(sizeof(characteristic_event_t));
-    if (!event) {
-        ERROR("Failed to allocate %d bytes for notification event. Skipping notification", sizeof(characteristic_event_t));
-        return;
-    }
-    event->characteristic = ch;
-    homekit_value_copy(&event->value, &value);
+    characteristic_event_t event;
+    event.characteristic = ch;
+    homekit_value_copy(&event.value, &value);
 
     DEBUG("Sending event to client %d", client->socket);
 
@@ -840,12 +836,10 @@ void send_404_response(client_context_t *context) {
 typedef struct _client_event {
     const homekit_characteristic_t *characteristic;
     homekit_value_t value;
-
-    struct _client_event *next;
 } client_event_t;
 
 
-void send_client_events(client_context_t *context, client_event_t *events) {
+void send_client_events(client_context_t *context, client_event_t *events, size_t events_count) {
     CLIENT_DEBUG(context, "Sending EVENT");
     DEBUG_HEAP();
 
@@ -864,13 +858,10 @@ void send_client_events(client_context_t *context, client_event_t *events) {
     json_object_start(json);
     json_string(json, "characteristics"); json_array_start(json);
 
-    client_event_t *e = events;
-    while (e) {
+    for (int i=0; i < events_count; i++) {
         json_object_start(json);
-        write_characteristic_json(json, context, e->characteristic, 0, &e->value);
+        write_characteristic_json(json, context, events[i].characteristic, 0, &events[i].value);
         json_object_end(json);
-
-        e = e->next;
     }
 
     json_array_end(json);
@@ -3626,73 +3617,50 @@ client_context_t *homekit_server_find_client_by_fd(homekit_server_t *server, int
 
 void homekit_server_process_notifications(homekit_server_t *server) {
     client_context_t *context = server->clients;
+
+    client_event_t client_events[10];
+    uint8_t client_events_count;
     while (context) {
-        characteristic_event_t *event = NULL;
-        if (xQueueReceive(context->event_queue, &event, 0)) {
-            // Get and coalesce all client events
-            client_event_t *events_head = malloc(sizeof(client_event_t));
-            if (!events_head) {
-                ERROR("Failed to allocate %d bytes for characteristic event processing",
-                      sizeof(client_event_t));
+        int i;
 
-                homekit_value_destruct(&event->value);
-                free(event);
-                continue;
+        client_events_count = 0;
+
+        characteristic_event_t event;
+        while (xQueueReceive(context->event_queue, &event, 0)) {
+            int client_event_index = -1;
+            for (i=0; i < client_events_count; i++) {
+                if (client_events[i].characteristic == event.characteristic) {
+                    client_event_index = i;
+                    break;
+                }
             }
 
-            events_head->characteristic = event->characteristic;
-            homekit_value_copy(&events_head->value, &event->value);
-            events_head->next = NULL;
+            if (client_event_index >= 0) {
+                homekit_value_destruct(&client_events[client_event_index].value);
+            } else {
+                if (client_events_count == (sizeof(client_events) / sizeof(*client_events))) {
+                    // No more room, flush events and start over
+                    send_client_events(context, client_events, client_events_count);
 
-            homekit_value_destruct(&event->value);
-            free(event);
-
-            client_event_t *events_tail = events_head;
-
-            while (xQueueReceive(context->event_queue, &event, 0)) {
-                client_event_t *e = events_head;
-                while (e) {
-                    if (e->characteristic == event->characteristic)
-                        break;
-
-                    e = e->next;
-                }
-
-                if (e) {
-                    homekit_value_destruct(&e->value);
-                } else {
-                    e = malloc(sizeof(client_event_t));
-                    if (!e) {
-                        ERROR("Failed to allocate %d bytes for characteristic event processing",
-                              sizeof(client_event_t));
-
-                        homekit_value_destruct(&event->value);
-                        free(event);
-                        continue;
+                    for (i=0; i < client_events_count; i++) {
+                        homekit_value_destruct(&client_events[i].value);
                     }
-                    e->characteristic = event->characteristic;
-                    e->next = NULL;
-
-                    events_tail->next = e;
-                    events_tail = e;
+                    client_events_count = 0;
                 }
 
-                homekit_value_copy(&e->value, &event->value);
-
-                homekit_value_destruct(&event->value);
-                free(event);
+                client_event_index = client_events_count++;
+                client_events[client_event_index].characteristic = event.characteristic;
             }
 
-            send_client_events(context, events_head);
+            // Move value from event to client_event avoiding unnecessary allocations/frees
+            memcpy(&client_events[client_event_index].value, &event.value, sizeof(event.value));
+        }
 
-            client_event_t *e = events_head;
-            while (e) {
-                client_event_t *next = e->next;
+        if (client_events_count) {
+            send_client_events(context, client_events, client_events_count);
 
-                homekit_value_destruct(&e->value);
-                free(e);
-
-                e = next;
+            for (i=0; i < client_events_count; i++) {
+                homekit_value_destruct(&client_events[i].value);
             }
         }
 
