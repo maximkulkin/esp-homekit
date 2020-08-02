@@ -78,6 +78,9 @@ ifdef component_compile_rules
     homekit_CFLAGS += -DHOMEKIT_DEBUG
     endif
 
+erase_homekit_data:
+	$(ESPTOOL) erase_region $(HOMEKIT_SPI_FLASH_BASE_ADDR) 4096
+
 else
     # ESP_IDF
     ifeq ($(IDF_TARGET),esp8266)
@@ -89,5 +92,8 @@ else
     COMPONENT_PRIV_INCLUDEDIRS = src
     COMPONENT_SRCDIRS = src
     COMPONENT_OBJEXCLUDE = src/mdnsresponder.o
+
+erase_homekit_data:
+	$(ESPTOOLPY_SERIAL) erase_region $(CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR) 4096
 
 endif
