@@ -67,9 +67,17 @@ void homekit_value_copy(homekit_value_t *dst, homekit_value_t *src) {
                 dst->bool_value = src->bool_value;
                 break;
             case homekit_format_uint8:
+                dst->uint8_value = src->uint8_value;
+                break;
             case homekit_format_uint16:
+                dst->uint16_value = src->uint16_value;
+                break;
             case homekit_format_uint32:
+                dst->uint32_value = src->uint32_value;
+                break;
             case homekit_format_uint64:
+                dst->uint64_value = src->uint64_value;
+                break;
             case homekit_format_int:
                 dst->int_value = src->int_value;
                 break;
