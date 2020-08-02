@@ -2466,17 +2466,20 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         uint16_t aid = context->endpoint_params.ids[id_index].aid;
         uint16_t iid = context->endpoint_params.ids[id_index].iid;
 
-        CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
         if (!ch) {
+            CLIENT_ERROR(context, "Requested characteristic %d.%d not found", aid, iid);
             write_characteristic_error(json, aid, iid, HAPStatus_NoResource);
             continue;
         }
 
         if (!(ch->permissions & homekit_permissions_paired_read)) {
+            CLIENT_ERROR(context, "Requested characteristic %d.%d is not readable", aid, iid);
             write_characteristic_error(json, aid, iid, HAPStatus_WriteOnly);
             continue;
         }
+
+        CLIENT_INFO(context, "Requested characteristic info for %d.%d (\"%s\")", aid, iid, ch->description);
 
         json_object_start(json);
         write_characteristic_json(json, context, ch, context->endpoint_params.format, NULL);
@@ -2579,7 +2582,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with boolean %s", aid, iid, value ? "true" : "false");
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with boolean %s", aid, iid, ch->description, value ? "true" : "false");
 
                     h_value = HOMEKIT_BOOL(value);
                     if (ch->setter_ex) {
@@ -2685,7 +2688,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         }
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with integer %g", aid, iid, value);
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with integer %g", aid, iid, ch->description, value);
 
                     switch (ch->format) {
                         case homekit_format_uint8:
@@ -2729,7 +2732,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with %g", aid, iid, value);
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with %g", aid, iid, ch->description, value);
 
                     h_value = HOMEKIT_FLOAT(value);
                     if (ch->setter_ex) {
@@ -2753,7 +2756,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with \"%s\"", aid, iid, value);
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with \"%s\"", aid, iid, ch->description, value);
 
                     h_value = HOMEKIT_STRING(value);
                     if (ch->setter_ex) {
@@ -2808,7 +2811,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with TLV:", aid, iid);
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with TLV:", aid, iid, ch->description);
                     for (tlv_t *t=tlv_values->head; t; t=t->next) {
                         char *escaped_payload = binary_to_string(t->value, t->size);
                         CLIENT_DEBUG(context, "  Type %d value (%d bytes): %s", t->type, t->size, escaped_payload);
@@ -2859,7 +2862,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                         return HAPStatus_InvalidValue;
                     }
 
-                    CLIENT_DEBUG(context, "Updating characteristic %d.%d with Data:", aid, iid);
+                    CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with Data:", aid, iid, ch->description);
 
                     h_value = HOMEKIT_DATA(data, data_size);
                     if (ch->setter_ex) {
@@ -2899,8 +2902,10 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
 
             if (j_events->type == cJSON_True) {
                 homekit_characteristic_add_notify_callback(ch, client_notify_characteristic, context);
+                CLIENT_INFO(context, "Subscribed to notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             } else {
                 homekit_characteristic_remove_notify_callback(ch, client_notify_characteristic, context);
+                CLIENT_INFO(context, "Unsubscribed from notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             }
         }
 
