@@ -56,6 +56,9 @@ typedef struct _client_context_t client_context_t;
       (server)->config->on_event(event);
 
 
+#define countof(items) (sizeof(items) / sizeof(items[0]))
+
+
 typedef enum {
     HOMEKIT_ENDPOINT_UNKNOWN = 0,
     HOMEKIT_ENDPOINT_PAIR_SETUP,
@@ -110,11 +113,25 @@ typedef struct {
 } homekit_server_t;
 
 
+typedef enum {
+    characteristic_format_type   = (1 << 1),
+    characteristic_format_meta   = (1 << 2),
+    characteristic_format_perms  = (1 << 3),
+    characteristic_format_events = (1 << 4),
+} characteristic_format_t;
+
+
 struct _client_context_t {
     homekit_server_t *server;
     int socket;
     homekit_endpoint_t endpoint;
-    query_param_t *endpoint_params;
+    struct {
+        struct {
+            uint16_t aid;
+            uint16_t iid;
+        } ids[25];
+        characteristic_format_t format;
+    } endpoint_params;
 
     byte data[1024 + 18];
     size_t data_size;
@@ -340,7 +357,7 @@ client_context_t *client_context_new() {
     }
 
     c->server = NULL;
-    c->endpoint_params = NULL;
+    memset(&c->endpoint_params, 0, sizeof(c->endpoint_params));
 
     c->data_size = sizeof(c->data);
     c->data_available = 0;
@@ -372,9 +389,6 @@ void client_context_free(client_context_t *c) {
 
     if (c->event_queue)
         vQueueDelete(c->event_queue);
-
-    if (c->endpoint_params)
-        query_params_free(c->endpoint_params);
 
     if (c->body)
         free(c->body);
@@ -410,14 +424,6 @@ void pairing_context_free(pairing_context_t *context) {
 
 
 void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *client);
-
-
-typedef enum {
-    characteristic_format_type   = (1 << 1),
-    characteristic_format_meta   = (1 << 2),
-    characteristic_format_perms  = (1 << 3),
-    characteristic_format_events = (1 << 4),
-} characteristic_format_t;
 
 
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
@@ -2403,53 +2409,20 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
     DEBUG_HEAP();
 
-    query_param_t *qp = context->endpoint_params;
-    while (qp) {
-        CLIENT_DEBUG(context, "Query paramter %s = %s", qp->name, qp->value);
-        qp = qp->next;
-    }
-
-    query_param_t *id_param = query_params_find(context->endpoint_params, "id");
-    if (!id_param) {
+    if (context->endpoint_params.ids[0].aid == 0) {
         CLIENT_ERROR(context, "Invalid get characteristics request: missing ID parameter");
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
     }
 
-    bool bool_endpoint_param(const char *name) {
-        query_param_t *param = query_params_find(context->endpoint_params, name);
-        return param && param->value && !strcmp(param->value, "1");
-    }
-
-    characteristic_format_t format = 0;
-    if (bool_endpoint_param("meta"))
-        format |= characteristic_format_meta;
-
-    if (bool_endpoint_param("perms"))
-        format |= characteristic_format_perms;
-
-    if (bool_endpoint_param("type"))
-        format |= characteristic_format_type;
-
-    if (bool_endpoint_param("ev"))
-        format |= characteristic_format_events;
 
     bool success = true;
 
-    char *id = strdup(id_param->value);
-    char *ch_id;
-    char *_id = id;
-    while ((ch_id = strsep(&_id, ","))) {
-        char *dot = strstr(ch_id, ".");
-        if (!dot) {
-            send_json_error_response(context, 400, HAPStatus_InvalidValue);
-            free(id);
-            return;
-        }
-
-        *dot = 0;
-        int aid = atoi(ch_id);
-        int iid = atoi(dot+1);
+    int id_index = 0;
+    while (id_index < countof(context->endpoint_params.ids) &&
+           context->endpoint_params.ids[id_index].aid != 0) {
+        uint16_t aid = context->endpoint_params.ids[id_index].aid;
+        uint16_t iid = context->endpoint_params.ids[id_index].iid;
 
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
@@ -2462,10 +2435,9 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
             success = false;
             continue;
         }
-    }
 
-    free(id);
-    id = strdup(id_param->value);
+        id_index++;
+    }
 
     if (success) {
         client_send(context, json_200_response_headers, sizeof(json_200_response_headers)-1);
@@ -2488,12 +2460,11 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         json_object_end(json);
     }
 
-    _id = id;
-    while ((ch_id = strsep(&_id, ","))) {
-        char *dot = strstr(ch_id, ".");
-        *dot = 0;
-        int aid = atoi(ch_id);
-        int iid = atoi(dot+1);
+    id_index = 0;
+    while (id_index < countof(context->endpoint_params.ids) &&
+           context->endpoint_params.ids[id_index].aid != 0) {
+        uint16_t aid = context->endpoint_params.ids[id_index].aid;
+        uint16_t iid = context->endpoint_params.ids[id_index].iid;
 
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
@@ -2508,11 +2479,13 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         }
 
         json_object_start(json);
-        write_characteristic_json(json, context, ch, format, NULL);
+        write_characteristic_json(json, context, ch, context->endpoint_params.format, NULL);
         if (!success) {
             json_string(json, "status"); json_uint8(json, HAPStatus_Success);
         }
         json_object_end(json);
+
+        id_index++;
     }
 
     json_array_end(json);
@@ -2521,8 +2494,6 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     json_flush(json);
 
     client_send_chunk(NULL, 0, context);
-
-    free(id);
 }
 
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
@@ -3325,9 +3296,76 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
             {
                 context->endpoint = HOMEKIT_ENDPOINT_GET_CHARACTERISTICS;
                 if (data[url_len] == '?') {
-                    char *query = strndup(data+url_len+1, length-url_len-1);
-                    context->endpoint_params = query_params_parse(query);
-                    free(query);
+                    memset(context->endpoint_params.ids, 0, sizeof(context->endpoint_params.ids));
+                    context->endpoint_params.format = 0;
+                    uint16_t id_count = 0;
+
+                    query_param_iterator_t it;
+                    query_param_iterator_init(&it, data+url_len+1, length-url_len-1);
+
+                    query_param_t param;
+                    while (query_param_iterator_next(&it, &param)) {
+                        if (!strncmp(param.name, "id", param.name_len)) {
+                            int pos = 0;
+
+                            while (pos < param.value_len) {
+                                if (pos >= param.value_len || !isdigit((unsigned char)param.value[pos])) {
+                                    // send_json_error_response(context, 400, HAPStatus_InvalidValue);
+                                    // TODO: report error
+                                    break;
+                                }
+
+                                uint16_t aid = 0;
+
+                                while (pos < param.value_len && isdigit((unsigned char)param.value[pos])) {
+                                    aid = aid * 10 + param.value[pos++] - '0';
+                                }
+
+                                if (pos >= param.value_len || param.value[pos] != '.') {
+                                    // TODO: report error
+                                    break;
+                                }
+
+                                pos++;
+
+                                if (pos >= param.value_len || !isdigit((unsigned char)param.value[pos])) {
+                                    // TODO: report error
+                                    break;
+                                }
+
+                                uint16_t iid = 0;
+                                while (pos < param.value_len && isdigit((unsigned char)param.value[pos])) {
+                                    iid = iid * 10 + param.value[pos++] - '0';
+                                }
+
+                                context->endpoint_params.ids[id_count].aid = aid;
+                                context->endpoint_params.ids[id_count].iid = iid;
+                                id_count++;
+
+                                if (pos >= param.value_len)
+                                    break;
+
+                                if (param.value[pos] != ',') {
+                                    // TODO: report error
+                                    break;
+                                }
+                            }
+                        } else if (!strncmp(param.name, "meta", param.name_len)) {
+                            if (param.value && param.value_len == 1 && param.value[0] == '1')
+                                context->endpoint_params.format |= characteristic_format_meta;
+                        } else if (!strncmp(param.name, "perms", param.name_len)) {
+                            if (param.value && param.value_len == 1 && param.value[0] == '1')
+                                context->endpoint_params.format |= characteristic_format_perms;
+                        } else if (!strncmp(param.name, "type", param.name_len)) {
+                            if (param.value && param.value_len == 1 && param.value[0] == '1')
+                                context->endpoint_params.format |= characteristic_format_type;
+                        } else if (!strncmp(param.name, "ev", param.name_len)) {
+                            if (param.value && param.value_len == 1 && param.value[0] == '1')
+                                context->endpoint_params.format |= characteristic_format_events;
+                        }
+                    }
+
+                    query_param_iterator_done(&it);
                 }
             }
         }
@@ -3419,11 +3457,6 @@ int homekit_server_on_message_complete(http_parser *parser) {
                 break;
             }
         }
-    }
-
-    if (context->endpoint_params) {
-        query_params_free(context->endpoint_params);
-        context->endpoint_params = NULL;
     }
 
     if (context->body) {

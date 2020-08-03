@@ -187,7 +187,8 @@ typedef struct _homekit_characteristic_change_callback {
 struct _homekit_characteristic {
     homekit_service_t *service;
 
-    unsigned int id;
+    // Although spec defines ID as uint64_t, uint16_t should be sufficient in most situations
+    uint16_t id;
     const char *type;
     const char *description;
     homekit_format_t format;
@@ -217,7 +218,8 @@ struct _homekit_characteristic {
 struct _homekit_service {
     homekit_accessory_t *accessory;
 
-    unsigned int id;
+    // Although spec defines ID as uint64_t, uint16_t should be sufficient in most situations
+    uint16_t id;
     const char *type;
     bool hidden;
     bool primary;
@@ -227,7 +229,8 @@ struct _homekit_service {
 };
 
 struct _homekit_accessory {
-    unsigned int id;
+    // Although spec defines ID as uint64_t, uint16_t should be sufficient in most situations
+    uint16_t id;
 
     homekit_accessory_category_t category;
     int config_number;
