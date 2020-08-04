@@ -2500,9 +2500,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
     CLIENT_INFO(context, "Update Characteristics");
     DEBUG_HEAP();
 
-    char *data1 = strndup((char *)data, size);
-    cJSON *json = cJSON_Parse(data1);
-    free(data1);
+    cJSON *json = cJSON_Parse((char *)data);
 
     if (!json) {
         CLIENT_ERROR(context, "Failed to parse request JSON");
