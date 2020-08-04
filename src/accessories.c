@@ -157,14 +157,14 @@ void homekit_value_free(homekit_value_t *value) {
 }
 
 
-size_t align_size(size_t size) {
+static size_t align_size(size_t size) {
     if (size % sizeof(void*)) {
         size += sizeof(void*) - size % sizeof(void*);
     }
     return size;
 }
 
-void *align_pointer(void *ptr) {
+static void *align_pointer(void *ptr) {
     uintptr_t p = (uintptr_t) ptr;
     if (p % sizeof(void*)) {
         p += sizeof(void*) - p % sizeof(void*);
