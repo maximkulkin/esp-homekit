@@ -72,6 +72,14 @@ typedef enum {
 } homekit_endpoint_t;
 
 
+typedef enum {
+    characteristic_format_type   = (1 << 1),
+    characteristic_format_meta   = (1 << 2),
+    characteristic_format_perms  = (1 << 3),
+    characteristic_format_events = (1 << 4),
+} characteristic_format_t;
+
+
 typedef struct {
     Srp *srp;
     byte *public_key;
@@ -106,24 +114,6 @@ typedef struct {
     fd_set fds;
     int max_fd;
 
-    json_stream *json;
-
-    int client_count;
-    client_context_t *clients;
-} homekit_server_t;
-
-
-typedef enum {
-    characteristic_format_type   = (1 << 1),
-    characteristic_format_meta   = (1 << 2),
-    characteristic_format_perms  = (1 << 3),
-    characteristic_format_events = (1 << 4),
-} characteristic_format_t;
-
-
-struct _client_context_t {
-    homekit_server_t *server;
-    int socket;
     homekit_endpoint_t endpoint;
     struct {
         struct {
@@ -137,9 +127,24 @@ struct _client_context_t {
     size_t data_size;
     size_t data_available;
 
+    byte decrypted[1024];
+
     char *body;
     size_t body_length;
     http_parser parser;
+
+    bool request_completed;
+
+    json_stream *json;
+
+    int client_count;
+    client_context_t *clients;
+} homekit_server_t;
+
+
+struct _client_context_t {
+    homekit_server_t *server;
+    int socket;
 
     int pairing_id;
     byte permissions;
@@ -187,6 +192,15 @@ homekit_server_t *server_new() {
     server->pairing_context = NULL;
     server->clients = NULL;
 
+    memset(&server->endpoint_params, 0, sizeof(server->endpoint_params));
+
+    server->data_size = sizeof(server->data);
+    server->data_available = 0;
+
+    server->body = NULL;
+    server->body_length = 0;
+    http_parser_init(&server->parser, HTTP_REQUEST);
+
     server->json = json_new(1024, client_send_chunk, NULL);
     if (!server->json) {
         free(server);
@@ -201,6 +215,9 @@ void server_free(homekit_server_t *server) {
     if (server->json) {
         json_free(server->json);
     }
+
+    if (server->body)
+        free(server->body);
 
     if (server->pairing_context)
         pairing_context_free(server->pairing_context);
@@ -357,15 +374,6 @@ client_context_t *client_context_new() {
     }
 
     c->server = NULL;
-    memset(&c->endpoint_params, 0, sizeof(c->endpoint_params));
-
-    c->data_size = sizeof(c->data);
-    c->data_available = 0;
-
-    c->body = NULL;
-    c->body_length = 0;
-    http_parser_init(&c->parser, HTTP_REQUEST);
-    c->parser.data = c;
 
     c->pairing_id = -1;
     c->encrypted = false;
@@ -389,9 +397,6 @@ void client_context_free(client_context_t *c) {
 
     if (c->event_queue)
         vQueueDelete(c->event_queue);
-
-    if (c->body)
-        free(c->body);
 
     free(c);
 }
@@ -2409,7 +2414,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
     DEBUG_HEAP();
 
-    if (context->endpoint_params.ids[0].aid == 0) {
+    if (context->server->endpoint_params.ids[0].aid == 0) {
         CLIENT_ERROR(context, "Invalid get characteristics request: missing ID parameter");
         send_json_error_response(context, 400, HAPStatus_InvalidValue);
         return;
@@ -2419,10 +2424,10 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     bool success = true;
 
     int id_index = 0;
-    while (id_index < countof(context->endpoint_params.ids) &&
-           context->endpoint_params.ids[id_index].aid != 0) {
-        uint16_t aid = context->endpoint_params.ids[id_index].aid;
-        uint16_t iid = context->endpoint_params.ids[id_index].iid;
+    while (id_index < countof(context->server->endpoint_params.ids) &&
+           context->server->endpoint_params.ids[id_index].aid != 0) {
+        uint16_t aid = context->server->endpoint_params.ids[id_index].aid;
+        uint16_t iid = context->server->endpoint_params.ids[id_index].iid;
 
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
@@ -2461,10 +2466,10 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
     }
 
     id_index = 0;
-    while (id_index < countof(context->endpoint_params.ids) &&
-           context->endpoint_params.ids[id_index].aid != 0) {
-        uint16_t aid = context->endpoint_params.ids[id_index].aid;
-        uint16_t iid = context->endpoint_params.ids[id_index].iid;
+    while (id_index < countof(context->server->endpoint_params.ids) &&
+           context->server->endpoint_params.ids[id_index].aid != 0) {
+        uint16_t aid = context->server->endpoint_params.ids[id_index].aid;
+        uint16_t iid = context->server->endpoint_params.ids[id_index].iid;
 
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
         if (!ch) {
@@ -2482,7 +2487,7 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         CLIENT_INFO(context, "Requested characteristic info for %d.%d (\"%s\")", aid, iid, ch->description);
 
         json_object_start(json);
-        write_characteristic_json(json, context, ch, context->endpoint_params.format, NULL);
+        write_characteristic_json(json, context, ch, context->server->endpoint_params.format, NULL);
         if (!success) {
             json_string(json, "status"); json_uint8(json, HAPStatus_Success);
         }
@@ -3279,17 +3284,17 @@ void homekit_server_on_resource(client_context_t *context) {
         return;
     }
 
-    context->server->config->on_resource(context->body, context->body_length);
+    context->server->config->on_resource(context->server->body, context->server->body_length);
 }
 
 
 int homekit_server_on_url(http_parser *parser, const char *data, size_t length) {
     client_context_t *context = (client_context_t*) parser->data;
 
-    context->endpoint = HOMEKIT_ENDPOINT_UNKNOWN;
+    context->server->endpoint = HOMEKIT_ENDPOINT_UNKNOWN;
     if (parser->method == HTTP_GET) {
         if (!strncmp(data, "/accessories", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_GET_ACCESSORIES;
+            context->server->endpoint = HOMEKIT_ENDPOINT_GET_ACCESSORIES;
         } else {
             static const char url[] = "/characteristics";
             size_t url_len = sizeof(url)-1;
@@ -3297,10 +3302,11 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
             if (length >= url_len && !strncmp(data, url, url_len) &&
                     (data[url_len] == 0 || data[url_len] == '?'))
             {
-                context->endpoint = HOMEKIT_ENDPOINT_GET_CHARACTERISTICS;
+                context->server->endpoint = HOMEKIT_ENDPOINT_GET_CHARACTERISTICS;
                 if (data[url_len] == '?') {
-                    memset(context->endpoint_params.ids, 0, sizeof(context->endpoint_params.ids));
-                    context->endpoint_params.format = 0;
+                    homekit_server_t *server = context->server;
+                    memset(server->endpoint_params.ids, 0, sizeof(server->endpoint_params.ids));
+                    server->endpoint_params.format = 0;
                     uint16_t id_count = 0;
 
                     query_param_iterator_t it;
@@ -3349,8 +3355,8 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
                                     iid = iid * 10 + param.value[pos++] - '0';
                                 }
 
-                                context->endpoint_params.ids[id_count].aid = aid;
-                                context->endpoint_params.ids[id_count].iid = iid;
+                                server->endpoint_params.ids[id_count].aid = aid;
+                                server->endpoint_params.ids[id_count].iid = iid;
                                 id_count++;
 
                                 if (pos >= param.value_len)
@@ -3368,16 +3374,16 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
                             }
                         } else if (!strncmp(param.name, "meta", param.name_len)) {
                             if (param.value && param.value_len == 1 && param.value[0] == '1')
-                                context->endpoint_params.format |= characteristic_format_meta;
+                                server->endpoint_params.format |= characteristic_format_meta;
                         } else if (!strncmp(param.name, "perms", param.name_len)) {
                             if (param.value && param.value_len == 1 && param.value[0] == '1')
-                                context->endpoint_params.format |= characteristic_format_perms;
+                                server->endpoint_params.format |= characteristic_format_perms;
                         } else if (!strncmp(param.name, "type", param.name_len)) {
                             if (param.value && param.value_len == 1 && param.value[0] == '1')
-                                context->endpoint_params.format |= characteristic_format_type;
+                                server->endpoint_params.format |= characteristic_format_type;
                         } else if (!strncmp(param.name, "ev", param.name_len)) {
                             if (param.value && param.value_len == 1 && param.value[0] == '1')
-                                context->endpoint_params.format |= characteristic_format_events;
+                                server->endpoint_params.format |= characteristic_format_events;
                         }
                     }
 
@@ -3387,23 +3393,23 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
         }
     } else if (parser->method == HTTP_POST) {
         if (!strncmp(data, "/identify", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_IDENTIFY;
+            context->server->endpoint = HOMEKIT_ENDPOINT_IDENTIFY;
         } else if (!strncmp(data, "/pair-setup", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_PAIR_SETUP;
+            context->server->endpoint = HOMEKIT_ENDPOINT_PAIR_SETUP;
         } else if (!strncmp(data, "/pair-verify", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_PAIR_VERIFY;
+            context->server->endpoint = HOMEKIT_ENDPOINT_PAIR_VERIFY;
         } else if (!strncmp(data, "/pairings", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_PAIRINGS;
+            context->server->endpoint = HOMEKIT_ENDPOINT_PAIRINGS;
         } else if (!strncmp(data, "/resource", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_RESOURCE;
+            context->server->endpoint = HOMEKIT_ENDPOINT_RESOURCE;
         }
     } else if (parser->method == HTTP_PUT) {
         if (!strncmp(data, "/characteristics", length)) {
-            context->endpoint = HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS;
+            context->server->endpoint = HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS;
         }
     }
 
-    if (context->endpoint == HOMEKIT_ENDPOINT_UNKNOWN) {
+    if (context->server->endpoint == HOMEKIT_ENDPOINT_UNKNOWN) {
         char *url = strndup(data, length);
         ERROR("Unknown endpoint: %s %s", http_method_str(parser->method), url);
         free(url);
@@ -3414,10 +3420,10 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
 
 int homekit_server_on_body(http_parser *parser, const char *data, size_t length) {
     client_context_t *context = parser->data;
-    context->body = realloc(context->body, context->body_length + length + 1);
-    memcpy(context->body + context->body_length, data, length);
-    context->body_length += length;
-    context->body[context->body_length] = 0;
+    context->server->body = realloc(context->server->body, context->server->body_length + length + 1);
+    memcpy(context->server->body + context->server->body_length, data, length);
+    context->server->body_length += length;
+    context->server->body[context->server->body_length] = 0;
 
     return 0;
 }
@@ -3426,13 +3432,13 @@ int homekit_server_on_message_complete(http_parser *parser) {
     client_context_t *context = parser->data;
 
     if (!context->encrypted) {
-        switch(context->endpoint) {
+        switch(context->server->endpoint) {
             case HOMEKIT_ENDPOINT_PAIR_SETUP: {
-                homekit_server_on_pair_setup(context, (const byte *)context->body, context->body_length);
+                homekit_server_on_pair_setup(context, (const byte *)context->server->body, context->server->body_length);
                 break;
             }
             case HOMEKIT_ENDPOINT_PAIR_VERIFY: {
-                homekit_server_on_pair_verify(context, (const byte *)context->body, context->body_length);
+                homekit_server_on_pair_verify(context, (const byte *)context->server->body, context->server->body_length);
                 break;
             }
             default: {
@@ -3442,7 +3448,7 @@ int homekit_server_on_message_complete(http_parser *parser) {
             }
         }
     } else {
-        switch(context->endpoint) {
+        switch(context->server->endpoint) {
             case HOMEKIT_ENDPOINT_IDENTIFY: {
                 homekit_server_on_identify(context);
                 break;
@@ -3456,11 +3462,11 @@ int homekit_server_on_message_complete(http_parser *parser) {
                 break;
             }
             case HOMEKIT_ENDPOINT_UPDATE_CHARACTERISTICS: {
-                homekit_server_on_update_characteristics(context, (const byte *)context->body, context->body_length);
+                homekit_server_on_update_characteristics(context, (const byte *)context->server->body, context->server->body_length);
                 break;
             }
             case HOMEKIT_ENDPOINT_PAIRINGS: {
-                homekit_server_on_pairings(context, (const byte *)context->body, context->body_length);
+                homekit_server_on_pairings(context, (const byte *)context->server->body, context->server->body_length);
                 break;
             }
             case HOMEKIT_ENDPOINT_RESOURCE: {
@@ -3475,11 +3481,13 @@ int homekit_server_on_message_complete(http_parser *parser) {
         }
     }
 
-    if (context->body) {
-        free(context->body);
-        context->body = NULL;
-        context->body_length = 0;
+    if (context->server->body) {
+        free(context->server->body);
+        context->server->body = NULL;
+        context->server->body_length = 0;
     }
+
+    context->server->request_completed = true;
 
     return 0;
 }
@@ -3493,76 +3501,72 @@ static http_parser_settings homekit_http_parser_settings = {
 
 
 static void homekit_client_process(client_context_t *context) {
-    int data_len = read(
-        context->socket,
-        context->data+context->data_available,
-        context->data_size-context->data_available
-    );
-    if (data_len == 0) {
-        context->disconnect = true;
-        return;
-    }
+    context->server->parser.data = context;
 
-    if (data_len < 0) {
-        if (errno != EAGAIN) {
-            CLIENT_ERROR(context, "Error reading data from socket (code %d). Disconnecting", errno);
+    do {
+        context->server->data_available = 0;
+
+        int data_len = read(
+            context->socket,
+            context->server->data+context->server->data_available,
+            context->server->data_size-context->server->data_available
+        );
+        if (data_len == 0) {
             context->disconnect = true;
-        }
-        return;
-    }
-
-    CLIENT_DEBUG(context, "Got %d incomming data", data_len);
-    byte *payload = (byte *)context->data;
-    size_t payload_size = (size_t)data_len;
-
-    byte *decrypted = NULL;
-    size_t decrypted_size = 0;
-
-    if (context->encrypted) {
-        CLIENT_DEBUG(context, "Decrypting data");
-
-        client_decrypt(context, context->data, data_len, NULL, &decrypted_size);
-
-        decrypted = malloc(decrypted_size);
-        if (!decrypted) {
-            CLIENT_ERROR(context, "Failed to allocate %d bytes to decrypt client payload", decrypted_size);
             return;
         }
 
-        int r = client_decrypt(context, context->data, data_len, decrypted, &decrypted_size);
-        if (r < 0) {
-            CLIENT_ERROR(context, "Invalid client data");
-            free(decrypted);
-            return;
+        if (data_len < 0) {
+            if (errno != EAGAIN) {
+                CLIENT_ERROR(context, "Error reading data from socket (code %d). Disconnecting", errno);
+                context->disconnect = true;
+                return;
+            }
+            continue;
         }
-        context->data_available = data_len - r;
-        if (r && context->data_available) {
-            memmove(context->data, &context->data[r], context->data_available);
+
+        CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+        byte *payload = (byte *)context->server->data;
+        size_t payload_size = (size_t)data_len;
+
+        size_t decrypted_size = sizeof(context->server->decrypted);
+
+        if (context->encrypted) {
+            CLIENT_DEBUG(context, "Decrypting data");
+
+            int r = client_decrypt(context, context->server->data, data_len, context->server->decrypted, &decrypted_size);
+            if (r < 0) {
+                CLIENT_ERROR(context, "Invalid client data");
+                return;
+            }
+            context->server->data_available = data_len - r;
+            if (r && context->server->data_available) {
+                memmove(context->server->data, &context->server->data[r], context->server->data_available);
+            }
+            CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, context->server->data_available);
+
+            payload = context->server->decrypted;
+            payload_size = decrypted_size;
+            if (payload_size)
+                print_binary("Decrypted data", payload, payload_size);
+        } else {
+            context->server->data_available = 0;
         }
-        CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, context->data_available);
 
-        payload = decrypted;
-        payload_size = decrypted_size;
-        if (payload_size)
-            print_binary("Decrypted data", payload, payload_size);
-    } else {
-        context->data_available = 0;
-    }
+        current_client_context = context;
 
-    current_client_context = context;
+        context->server->request_completed = false;
 
-    http_parser_execute(
-        &context->parser, &homekit_http_parser_settings,
-        (char *)payload, payload_size
-    );
+        http_parser_execute(
+            &context->server->parser, &homekit_http_parser_settings,
+            (char *)payload, payload_size
+        );
+    } while (context->server->data_available && !context->server->request_completed);
 
     current_client_context = NULL;
+    context->server->parser.data = NULL;
 
     CLIENT_DEBUG(context, "Finished processing");
-
-    if (decrypted) {
-        free(decrypted);
-    }
 }
 
 
