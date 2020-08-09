@@ -3501,9 +3501,9 @@ static http_parser_settings homekit_http_parser_settings = {
 static void homekit_client_process(client_context_t *context) {
     context->server->parser.data = context;
 
-    do {
-        size_t data_available = 0;
+    size_t data_available = 0;
 
+    do {
         int data_len = read(
             context->socket,
             context->server->data+data_available,
