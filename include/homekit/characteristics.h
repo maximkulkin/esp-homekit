@@ -47,7 +47,7 @@
 #define HOMEKIT_SERVICE_ACCESSORY_INFORMATION HOMEKIT_APPLE_UUID2("3E")
 
 /**
- Defines that the accessory constains a fan. For more features see FAN2.
+ Defines that the accessory contains a fan. For more features see FAN2.
  
  Required Characteristics:
  - ON
@@ -109,7 +109,7 @@
 #define HOMEKIT_SERVICE_LOCK_MANAGEMENT HOMEKIT_APPLE_UUID2("44")
 
 /**
- Defines that the accessory constains a lock mechanism. This can be combined with Lock Management.
+ Defines that the accessory contains a lock mechanism. This can be combined with Lock Management.
  
  Required Characteristics:
  - LOCK_CURRENT_STATE
@@ -380,7 +380,7 @@
 #define HOMEKIT_SERVICE_WINDOW HOMEKIT_APPLE_UUID2("8B")
 
 /**
- Defines that the accessory constains a window covering such as a blind or curtain.
+ Defines that the accessory contains a window covering such as a blind or curtain.
  
  Required Characteristics:
  - CURRENT_POSITION
@@ -515,7 +515,7 @@
 #define HOMEKIT_SERVICE_SLAT HOMEKIT_APPLE_UUID2("B9")
 
 /**
- Defines that the accessory contains a filter that can notify the user of needing maintenace.
+ Defines that the accessory contains a filter that can notify the user of needing maintenance.
  
  Required Characteristics:
  - FILTER_CHANGE_INDICATION

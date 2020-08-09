@@ -53,7 +53,7 @@ int crypto_chacha20poly1305_encrypt(
 int crypto_chacha20poly1305_decrypt(
     const byte *key, const byte *nonce, const byte *aad, size_t aad_size,
     const byte *message, size_t message_size,
-    byte *decrypted, size_t *descrypted_size
+    byte *decrypted, size_t *decrypted_size
 );
 
 // ED25519
