@@ -3317,10 +3317,8 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
 
                             while (pos < param.value_len) {
                                 if (pos >= param.value_len || !isdigit((unsigned char)param.value[pos])) {
-                                    char *param_value = strndup(param.value, param.value_len);
-                                    CLIENT_DEBUG(context, "Unexpected character in ID query param at position %d: "
-                                                 "expected digit, actual '%c'", param_value, pos, param.value[pos]);
-                                    free(param_value);
+                                    CLIENT_ERROR(context, "Unexpected character in ID query param at position %d: "
+                                                 "expected digit, actual '%c'", pos, param.value[pos]);
                                     break;
                                 }
 
@@ -3331,20 +3329,16 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
                                 }
 
                                 if (pos >= param.value_len || param.value[pos] != '.') {
-                                    char *param_value = strndup(param.value, param.value_len);
-                                    CLIENT_DEBUG(context, "Unexpected character in ID query param at position %d: "
-                                                 "expected '.', actual '%c'", param_value, pos, param.value[pos]);
-                                    free(param_value);
+                                    CLIENT_ERROR(context, "Unexpected character in ID query param at position %d: "
+                                                 "expected '.', actual '%c'", pos, param.value[pos]);
                                     break;
                                 }
 
                                 pos++;
 
                                 if (pos >= param.value_len || !isdigit((unsigned char)param.value[pos])) {
-                                    char *param_value = strndup(param.value, param.value_len);
-                                    CLIENT_DEBUG(context, "Unexpected character in ID query param at position %d: "
-                                                 "expected digit, actual '%c'", param_value, pos, param.value[pos]);
-                                    free(param_value);
+                                    CLIENT_ERROR(context, "Unexpected character in ID query param at position %d: "
+                                                 "expected digit, actual '%c'", pos, param.value[pos]);
                                     break;
                                 }
 
@@ -3361,10 +3355,8 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
                                     break;
 
                                 if (param.value[pos] != ',') {
-                                    char *param_value = strndup(param.value, param.value_len);
-                                    CLIENT_DEBUG(context, "Unexpected character in ID query param at position %d: "
-                                                 "expected ',', actual '%c'", param_value, pos, param.value[pos]);
-                                    free(param_value);
+                                    CLIENT_ERROR(context, "Unexpected character in ID query param at position %d: "
+                                                 "expected ',', actual '%c'", pos, param.value[pos]);
                                     break;
                                 }
 
