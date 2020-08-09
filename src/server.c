@@ -306,7 +306,7 @@ typedef enum {
     HAPStatus_NoAccessoryConnection = -70402,
     // Resource is busy, try again
     HAPStatus_ResourceBusy = -70403,
-    // Connot write to read only characteristic
+    // Cannot write to read only characteristic
     HAPStatus_ReadOnly = -70404,
     // Cannot read from a write only characteristic
     HAPStatus_WriteOnly = -70405,
@@ -4087,11 +4087,11 @@ int homekit_get_setup_uri(const homekit_server_config_t *config, char *buffer, s
 
     if (!config->password)
         return -1;
-    // TODO: validate password in case it is run beffore server is started
+    // TODO: validate password in case it is run before server is started
 
     if (!config->setupId)
         return -1;
-    // TODO: validate setupID in case it is run beffore server is started
+    // TODO: validate setupID in case it is run before server is started
 
     homekit_accessory_t *accessory = homekit_accessory_by_id(config->accessories, 1);
     if (!accessory)

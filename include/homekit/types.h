@@ -270,9 +270,9 @@ struct _homekit_accessory {
     }
 
 // Declaration macro to create a custom characteristic inplace without
-// having to define HOMKIT_DECLARE_CHARACTERISTIC_<name>() macro.
+// having to define HOMEKIT_DECLARE_CHARACTERISTIC_<name>() macro.
 //
-// Useage:
+// Usage:
 //     homekit_characteristic_t custom_ch = HOMEKIT_CHARACTERISTIC_(
 //         CUSTOM,
 //         .type = "00000023-0000-1000-8000-0026BB765291",
@@ -290,7 +290,7 @@ struct _homekit_accessory {
 
 
 // Allocate memory and copy given accessory
-// Does not make copies of all accessory services, so make sure thay are
+// Does not make copies of all accessory services, so make sure they are
 // either allocated on heap or in static memory (but not on stack).
 homekit_accessory_t *homekit_accessory_clone(homekit_accessory_t *accessory);
 // Allocate memory and copy given service.
@@ -313,7 +313,7 @@ homekit_characteristic_t *homekit_characteristic_clone(homekit_characteristic_t 
 #define NEW_HOMEKIT_SERVICE(name, ...) \
     homekit_service_clone(HOMEKIT_SERVICE(name, ## __VA_ARGS__))
 
-// Macro to define an characteristic in dynamic memory.
+// Macro to define a characteristic in dynamic memory.
 // Used to aid creating characteristics definitions in runtime.
 #define NEW_HOMEKIT_CHARACTERISTIC(name, ...) \
     homekit_characteristic_clone(HOMEKIT_CHARACTERISTIC(name, ## __VA_ARGS__))
