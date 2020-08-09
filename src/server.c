@@ -790,8 +790,12 @@ void client_send(client_context_t *context, byte *data, size_t data_size) {
 #if HOMEKIT_DEBUG
     if (data_size < 4096) {
         char *payload = binary_to_string(data, data_size);
-        CLIENT_DEBUG(context, "Sending payload: %s", payload);
-        free(payload);
+        if (payload) {
+            CLIENT_DEBUG(context, "Sending payload: %s", payload);
+            free(payload);
+        } else {
+            CLIENT_DEBUG(context, "Sending payload of size %d", data_size);
+        }
     }
 #endif
 
