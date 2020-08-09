@@ -124,9 +124,6 @@ typedef struct {
     } endpoint_params;
 
     byte data[1024 + 18];
-    size_t data_size;
-    size_t data_available;
-
     byte decrypted[1024];
 
     char *body;
@@ -193,9 +190,6 @@ homekit_server_t *server_new() {
     server->clients = NULL;
 
     memset(&server->endpoint_params, 0, sizeof(server->endpoint_params));
-
-    server->data_size = sizeof(server->data);
-    server->data_available = 0;
 
     server->body = NULL;
     server->body_length = 0;
@@ -3504,12 +3498,12 @@ static void homekit_client_process(client_context_t *context) {
     context->server->parser.data = context;
 
     do {
-        context->server->data_available = 0;
+        size_t data_available = 0;
 
         int data_len = read(
             context->socket,
-            context->server->data+context->server->data_available,
-            context->server->data_size-context->server->data_available
+            context->server->data+data_available,
+            sizeof(context->server->data)-data_available
         );
         if (data_len == 0) {
             context->disconnect = true;
@@ -3539,18 +3533,18 @@ static void homekit_client_process(client_context_t *context) {
                 CLIENT_ERROR(context, "Invalid client data");
                 return;
             }
-            context->server->data_available = data_len - r;
-            if (r && context->server->data_available) {
-                memmove(context->server->data, &context->server->data[r], context->server->data_available);
+            data_available = data_len - r;
+            if (r && data_available) {
+                memmove(context->server->data, &context->server->data[r], data_available);
             }
-            CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, context->server->data_available);
+            CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, data_available);
 
             payload = context->server->decrypted;
             payload_size = decrypted_size;
             if (payload_size)
                 print_binary("Decrypted data", payload, payload_size);
         } else {
-            context->server->data_available = 0;
+            data_available = 0;
         }
 
         current_client_context = context;
@@ -3561,7 +3555,7 @@ static void homekit_client_process(client_context_t *context) {
             &context->server->parser, &homekit_http_parser_settings,
             (char *)payload, payload_size
         );
-    } while (context->server->data_available && !context->server->request_completed);
+    } while (data_available && !context->server->request_completed);
 
     current_client_context = NULL;
     context->server->parser.data = NULL;
