@@ -234,9 +234,9 @@ void server_free(homekit_server_t *server) {
 #define TLV_DEBUG(values)
 #endif
 
-#define CLIENT_DEBUG(client, message, ...) DEBUG("[Client %d] " message, client->socket, ##__VA_ARGS__)
-#define CLIENT_INFO(client, message, ...) INFO("[Client %d] " message, client->socket, ##__VA_ARGS__)
-#define CLIENT_ERROR(client, message, ...) ERROR("[Client %d] " message, client->socket, ##__VA_ARGS__)
+#define CLIENT_DEBUG(client, message, ...) DEBUG("[Client%2d] " message, client->socket, ##__VA_ARGS__)
+#define CLIENT_INFO(client, message, ...)   INFO("[Client%2d] " message, client->socket, ##__VA_ARGS__)
+#define CLIENT_ERROR(client, message, ...) ERROR("[Client%2d] " message, client->socket, ##__VA_ARGS__)
 
 void tlv_debug(const tlv_values_t *values) {
     DEBUG("Got following TLV values:");
@@ -3515,7 +3515,7 @@ static void homekit_client_process(client_context_t *context) {
             continue;
         }
 
-        CLIENT_DEBUG(context, "Got %d incomming data", data_len);
+        CLIENT_DEBUG(context, "Got %d incoming data", data_len);
         byte *payload = (byte *)context->server->data;
         size_t payload_size = (size_t)data_len;
 
@@ -3561,7 +3561,15 @@ static void homekit_client_process(client_context_t *context) {
 
 
 void homekit_server_close_client(homekit_server_t *server, client_context_t *context) {
-    CLIENT_INFO(context, "Closing client connection");
+    char address_buffer[INET_ADDRSTRLEN];
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(context->socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+        inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
+    } else {
+        strcpy(address_buffer, "?.?.?.?");
+    }
+    CLIENT_INFO(context, "Closing client connection from %s",address_buffer);
 
     FD_CLR(context->socket, &server->fds);
     server->client_count--;
@@ -3582,6 +3590,21 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_CLIENT_DISCONNECTED);
 
     client_context_free(context);
+}
+
+
+void homekit_server_close_duplicate_clients(homekit_server_t *server, struct sockaddr_in addr) {
+    struct sockaddr_in old_addr;
+    socklen_t addr_len = sizeof(addr);
+    client_context_t *context = server->clients;
+     
+    while (context) {
+        if ( getpeername(context->socket, (struct sockaddr *)&old_addr, &addr_len) == 0 &&
+             (old_addr.sin_addr.s_addr == addr.sin_addr.s_addr) && 
+             (old_addr.sin_port != addr.sin_port) )
+                context->disconnect = true;
+        context = context->next;
+    }
 }
 
 
@@ -3606,7 +3629,20 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
         strcpy(address_buffer, "?.?.?.?");
     }
 
-    INFO("Got new client connection: %d from %s", s, address_buffer);
+    INFO("[Client%2d] Got new client connection from %s", s, address_buffer);
+
+    homekit_server_close_duplicate_clients(server, addr); //remove old connections with same ip but different port
+
+    client_context_t *context = server->clients;
+    while (context) {
+        if (getpeername(context->socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+            inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
+        } else {
+            strcpy(address_buffer, "?.?.?.?");
+        }
+        CLIENT_INFO(context, " Have existing connection from %s %s",address_buffer,context->disconnect?"X":"");
+        context = context->next;
+    }
 
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
@@ -3623,7 +3659,7 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     const int maxpkt = 4; /* Drop connection after 4 probes without response */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
 
-    client_context_t *context = client_context_new();
+    context = client_context_new();
     if (!context) {
         ERROR("Failed to allocate memory for client context");
         close(s);
@@ -3740,7 +3776,7 @@ void homekit_server_close_clients(homekit_server_t *server) {
 
 static void homekit_run_server(homekit_server_t *server)
 {
-    DEBUG("Staring HTTP server");
+    DEBUG("Starting HTTP server");
 
     struct sockaddr_in serv_addr;
     server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -3824,7 +3860,7 @@ void homekit_setup_mdns(homekit_server_t *server) {
     // should be in format XX:XX:XX:XX:XX:XX, otherwise devices will ignore it
     homekit_mdns_add_txt("id", "%s", server->accessory_id);
     // current configuration number (required)
-    homekit_mdns_add_txt("c#", "%d", server->config->config_number);
+    homekit_mdns_add_txt("c#", "%u", server->config->config_number);
     // current state number (required)
     homekit_mdns_add_txt("s#", "1");
     // feature flags (required if non-zero)
