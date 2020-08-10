@@ -651,9 +651,9 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
 }
 
 
-int client_send_encrypted(
+int client_send_encryptedv(
     client_context_t *context,
-    byte *payload, size_t size
+    uint8_t n, const byte **part_data, size_t *part_sizes
 ) {
     if (!context || !context->encrypted)
         return -1;
@@ -662,16 +662,32 @@ int client_send_encrypted(
     memset(nonce, 0, sizeof(nonce));
 
     byte encrypted[1024 + 18];
-    int payload_offset = 0;
 
-    while (payload_offset < size) {
-        size_t chunk_size = size - payload_offset;
-        if (chunk_size > 1024)
-            chunk_size = 1024;
+    uint8_t part_index = 0;
+    size_t part_offset = 0;
 
-        byte aead[2] = {chunk_size % 256, chunk_size / 256};
+    byte *aead = encrypted;
 
-        memcpy(encrypted, aead, 2);
+    while (part_index < n) {
+        size_t chunk_size = 0;
+        while (part_index < n && chunk_size < 1024) {
+            size_t extra_size = part_sizes[part_index] - part_offset;
+            if (chunk_size + extra_size > 1024) {
+                extra_size = 1024 - chunk_size;
+            }
+
+            memcpy(encrypted+2+chunk_size, part_data[part_index]+part_offset, extra_size);
+
+            chunk_size += extra_size;
+            part_offset += extra_size;
+            if (part_offset >= part_sizes[part_index]) {
+                part_index++;
+                part_offset = 0;
+            }
+        }
+
+        aead[0] = chunk_size & 0xff;
+        aead[1] = chunk_size >> 8;
 
         byte i = 4;
         int x = context->count_reads++;
@@ -683,15 +699,13 @@ int client_send_encrypted(
         size_t available = sizeof(encrypted) - 2;
         int r = crypto_chacha20poly1305_encrypt(
             context->read_key, nonce, aead, 2,
-            payload+payload_offset, chunk_size,
+            encrypted+2, chunk_size,
             encrypted+2, &available
         );
         if (r) {
             ERROR("Failed to chacha encrypt payload (code %d)", r);
             return -1;
         }
-
-        payload_offset += chunk_size;
 
         write(context->socket, encrypted, available + 2);
     }
@@ -786,10 +800,14 @@ void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t 
 }
 
 
-void client_send(client_context_t *context, byte *data, size_t data_size) {
+void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_t *data_sizes) {
 #if HOMEKIT_DEBUG
+    size_t data_size = 0;
+    for (uint8_t i=0; i < n; i++)
+        data_size += data_sizes[i];
+
     if (data_size < 4096) {
-        char *payload = binary_to_string(data, data_size);
+        char *payload = binary_to_stringv(n, data, data_sizes);
         if (payload) {
             CLIENT_DEBUG(context, "Sending payload: %s", payload);
             free(payload);
@@ -800,34 +818,32 @@ void client_send(client_context_t *context, byte *data, size_t data_size) {
 #endif
 
     if (context->encrypted) {
-        int r = client_send_encrypted(context, data, data_size);
+        int r = client_send_encryptedv(context, n, data, data_sizes);
         if (r) {
             CLIENT_ERROR(context, "Failed to encrypt response (code %d)", r);
             return;
         }
     } else {
-        write(context->socket, data, data_size);
+        for (uint8_t i=0; i < n; i++)
+            write(context->socket, data[i], data_sizes[i]);
     }
+}
+
+
+void client_send(client_context_t *context, byte *data, size_t data_size) {
+    client_sendv(context, 1, (const byte*[]){ data }, (size_t[]){ data_size });
 }
 
 
 void client_send_chunk(byte *data, size_t size, void *arg) {
     client_context_t *context = arg;
 
-    size_t payload_size = size + 8;
-    byte *payload = malloc(payload_size);
-    // TODO: get rid of this allocation
+    byte chunk_header[8];
+    size_t chunk_header_size = snprintf((char *)chunk_header, sizeof(chunk_header), "%x\r\n", size);
 
-    int offset = snprintf((char *)payload, payload_size, "%x\r\n", size);
-    memcpy(payload + offset, data, size);
-    payload[offset + size] = '\r';
-    payload[offset + size + 1] = '\n';
-
-    // TODO: change this API to vectorized form
-    // (so payload is provided as series of pointers)
-    client_send(context, payload, offset + size + 2);
-
-    free(payload);
+    client_sendv(context, 3,
+                 (const byte*[]){chunk_header, data, (byte*)"\r\n"},
+                 (size_t[]){chunk_header_size, size, 2});
 }
 
 
