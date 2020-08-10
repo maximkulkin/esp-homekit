@@ -1519,9 +1519,7 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 break;
             }
 
-            char *device_id = strndup((const char *)tlv_device_id->value, tlv_device_id->size);
-            INFO("Added pairing with %s", device_id);
-            free(device_id);
+            INFO("Added pairing with %.*s", tlv_device_id->size, (char *)tlv_device_id->value);
 
             tlv_free(decrypted_message);
 
@@ -2201,24 +2199,11 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 break;
             }
 
-            char *device_id = strndup((const char *)tlv_device_id->value, tlv_device_id->size);
-            if (!device_id) {
-                CLIENT_ERROR(context, "Failed to allocate memory for device ID");
-
-                tlv_free(decrypted_message);
-                pair_verify_context_free(context->verify_context);
-                context->verify_context = NULL;
-
-                send_tlv_error_response(context, 4, TLVError_Authentication);
-                break;
-            }
-
-            CLIENT_DEBUG(context, "Searching pairing with %s", device_id);
+            CLIENT_DEBUG(context, "Searching pairing with %.*s", tlv_device_id->size, tlv_device_id->value);
             pairing_t pairing;
-            if (homekit_storage_find_pairing(device_id, &pairing)) {
-                CLIENT_ERROR(context, "No pairing for %s found", device_id);
+            if (homekit_storage_find_pairing((const char *)tlv_device_id->value, &pairing)) {
+                CLIENT_ERROR(context, "No pairing for %.*s found", tlv_device_id->size, tlv_device_id->value);
 
-                free(device_id);
                 tlv_free(decrypted_message);
                 pair_verify_context_free(context->verify_context);
                 context->verify_context = NULL;
@@ -2227,8 +2212,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 break;
             }
 
-            CLIENT_INFO(context, "Found pairing with %s", device_id);
-            free(device_id);
+            CLIENT_INFO(context, "Found pairing with %.*s", tlv_device_id->size, tlv_device_id->value);
 
             byte permissions = pairing.permissions;
             int pairing_id = pairing.id;
@@ -3058,18 +3042,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 break;
             }
 
-            char *device_identifier = strndup(
-                (const char *)tlv_device_identifier->value,
-                tlv_device_identifier->size
-            );
-            if (!device_identifier) {
-                CLIENT_ERROR(context, "Failed to allocate memory for device identifier");
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-
             pairing_t pairing;
-            if (!homekit_storage_find_pairing(device_identifier, &pairing)) {
+            if (!homekit_storage_find_pairing((const char *)tlv_device_identifier->value, &pairing)) {
                 size_t pairing_public_key_size = 0;
                 crypto_ed25519_export_public_key(&pairing.device_key, NULL, &pairing_public_key_size);
 
@@ -3077,7 +3051,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 if (!pairing_public_key) {
                     CLIENT_ERROR(context, "Failed to allocate %d bytes for pairing public key",
                                  pairing_public_key_size);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
@@ -3086,7 +3059,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 if (r) {
                     CLIENT_ERROR(context, "Failed to add pairing: error exporting pairing public key (code %d)", r);
                     free(pairing_public_key);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
@@ -3095,46 +3067,40 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                         memcmp(tlv_device_public_key->value, pairing_public_key, pairing_public_key_size)) {
                     CLIENT_ERROR(context, "Failed to add pairing: pairing public key differs from given one");
                     free(pairing_public_key);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
 
                 free(pairing_public_key);
 
-                r = homekit_storage_update_pairing(device_identifier, device_permissions);
+                r = homekit_storage_update_pairing((const char *)tlv_device_identifier->value, device_permissions);
                 if (r) {
                     CLIENT_ERROR(context, "Failed to add pairing: storage error (code %d)", r);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
 
-                INFO("Updated pairing with %s", device_identifier);
+                INFO("Updated pairing with %.*s", tlv_device_identifier->size, tlv_device_identifier->value);
             } else {
                 if (!homekit_storage_can_add_pairing()) {
                     CLIENT_ERROR(context, "Failed to add pairing: max peers");
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_MaxPeers);
                     break;
                 }
 
                 r = homekit_storage_add_pairing(
-                    device_identifier, &device_key, device_permissions
+                    (const char *)tlv_device_identifier->value, &device_key, device_permissions
                 );
                 if (r) {
                     CLIENT_ERROR(context, "Failed to add pairing: storage error (code %d)", r);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
 
-                INFO("Added pairing with %s", device_identifier);
+                INFO("Added pairing with %.*s", tlv_device_identifier->size, tlv_device_identifier->value);
 
                 HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_ADDED);
             }
-
-            free(device_identifier);
 
             tlv_values_t *response = tlv_new();
             if (!response) {
@@ -3164,29 +3130,18 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 break;
             }
 
-            char *device_identifier = strndup(
-                (const char *)tlv_device_identifier->value,
-                tlv_device_identifier->size
-            );
-            if (!device_identifier) {
-                CLIENT_ERROR(context, "Failed to allocate memory for device identifier");
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-
             pairing_t pairing;
-            if (!homekit_storage_find_pairing(device_identifier, &pairing)) {
+            if (!homekit_storage_find_pairing((const char *)tlv_device_identifier->value, &pairing)) {
                 bool is_admin = pairing.permissions & pairing_permissions_admin;
 
-                r = homekit_storage_remove_pairing(device_identifier);
+                r = homekit_storage_remove_pairing((const char *)tlv_device_identifier->value);
                 if (r) {
                     CLIENT_ERROR(context, "Failed to remove pairing: storage error (code %d)", r);
-                    free(device_identifier);
                     send_tlv_error_response(context, 2, TLVError_Unknown);
                     break;
                 }
 
-                INFO("Removed pairing with %s", device_identifier);
+                INFO("Removed pairing with %.*s", tlv_device_identifier->size, tlv_device_identifier->value);
 
                 HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_REMOVED);
 
@@ -3222,8 +3177,6 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                     }
                 }
             }
-
-            free(device_identifier);
 
             tlv_values_t *response = tlv_new();
             if (!response) {
@@ -3416,9 +3369,7 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
     }
 
     if (context->server->endpoint == HOMEKIT_ENDPOINT_UNKNOWN) {
-        char *url = strndup(data, length);
-        ERROR("Unknown endpoint: %s %s", http_method_str(parser->method), url);
-        free(url);
+        ERROR("Unknown endpoint: %s %.*s", http_method_str(parser->method), length, data);
     }
 
     return 0;
