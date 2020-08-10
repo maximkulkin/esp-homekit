@@ -128,6 +128,7 @@ typedef struct {
 
     char *body;
     size_t body_length;
+    bool body_static;
     http_parser parser;
 
     bool request_completed;
@@ -193,6 +194,7 @@ homekit_server_t *server_new() {
 
     server->body = NULL;
     server->body_length = 0;
+    server->body_static = false;
     http_parser_init(&server->parser, HTTP_REQUEST);
 
     server->json = json_new(1024, client_send_chunk, NULL);
@@ -3377,10 +3379,20 @@ int homekit_server_on_url(http_parser *parser, const char *data, size_t length) 
 
 int homekit_server_on_body(http_parser *parser, const char *data, size_t length) {
     client_context_t *context = parser->data;
-    context->server->body = realloc(context->server->body, context->server->body_length + length + 1);
-    memcpy(context->server->body + context->server->body_length, data, length);
-    context->server->body_length += length;
-    context->server->body[context->server->body_length] = 0;
+    if (!context->server->body && !parser->content_length) {
+        context->server->body = (char *)data;
+        context->server->body_length = length;
+        context->server->body_static = true;
+    } else {
+        if (!context->server->body) {
+            context->server->body = malloc(length + parser->content_length + 1);
+            context->server->body_length = 0;
+            context->server->body_static = false;
+        }
+        memcpy(context->server->body + context->server->body_length, data, length);
+        context->server->body_length += length;
+        context->server->body[context->server->body_length] = 0;
+    }
 
     return 0;
 }
@@ -3446,9 +3458,11 @@ int homekit_server_on_message_complete(http_parser *parser) {
     }
 
     if (context->server->body) {
-        free(context->server->body);
+        if (!context->server->body_static)
+            free(context->server->body);
         context->server->body = NULL;
         context->server->body_length = 0;
+        context->server->body_static = false;
     }
 
     context->server->request_completed = true;
