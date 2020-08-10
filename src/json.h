@@ -31,3 +31,4 @@ void json_string(json_stream *json, const char *x);
 void json_boolean(json_stream *json, bool x);
 void json_null(json_stream *json);
 
+void json_base64_string(json_stream *json, const char *x, size_t size);

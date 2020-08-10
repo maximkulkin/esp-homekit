@@ -599,20 +599,8 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                                 break;
                             }
 
-                            size_t encoded_tlv_size = base64_encoded_size(tlv_data, tlv_size);
-                            byte *encoded_tlv_data = malloc(encoded_tlv_size + 1);
-                            if (!encoded_tlv_data) {
-                                CLIENT_ERROR(client, "Failed to allocate %d bytes for encoding characteristic TLV data", encoded_tlv_size + 1);
-                                free(tlv_data);
-                                json_string(json, "");
-                                break;
-                            }
-                            base64_encode(tlv_data, tlv_size, encoded_tlv_data);
-                            encoded_tlv_data[encoded_tlv_size] = 0;
+                            json_base64_string(json, (const char *)tlv_data, tlv_size);
 
-                            json_string(json, (char*) encoded_tlv_data);
-
-                            free(encoded_tlv_data);
                             free(tlv_data);
                         }
                     }
@@ -623,19 +611,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     if (!v.data_value || v.data_size == 0) {
                         json_string(json, "");
                     } else {
-                        size_t encoded_data_size = base64_encoded_size(v.data_value, v.data_size);
-                        byte *encoded_data = malloc(encoded_data_size + 1);
-                        if (!encoded_data) {
-                            CLIENT_ERROR(client, "Failed to allocate %d bytes for encoding characteristic data", encoded_data_size + 1);
-                            json_string(json, "");
-                            break;
-                        }
-                        base64_encode(v.data_value, v.data_size, encoded_data);
-                        encoded_data[encoded_data_size] = 0;
-
-                        json_string(json, (char*) encoded_data);
-
-                        free(encoded_data);
+                        json_base64_string(json, (const char *)v.data_value, v.data_size);
                     }
 
                     break;

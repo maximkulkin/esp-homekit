@@ -5,6 +5,7 @@
 #include <string.h>
 #include "json.h"
 #include "debug.h"
+#include "base64.h"
 
 #define JSON_MAX_DEPTH 30
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -299,6 +300,60 @@ void json_string(json_stream *json, const char *x) {
         // TODO: escape string
         json_put(json, '"');
         json_write(json, x, strlen(x));
+        json_put(json, '"');
+    }
+
+    switch (json->state) {
+        case JSON_STATE_START:
+            _do_write();
+            json->state = JSON_STATE_END;
+            break;
+        case JSON_STATE_ARRAY_ITEM:
+            json_put(json, ',');
+        case JSON_STATE_ARRAY:
+            _do_write();
+            json->state = JSON_STATE_ARRAY_ITEM;
+            break;
+        case JSON_STATE_OBJECT_VALUE:
+            json_put(json, ',');
+        case JSON_STATE_OBJECT:
+            _do_write();
+            json_put(json, ':');
+            json->state = JSON_STATE_OBJECT_KEY;
+            break;
+        case JSON_STATE_OBJECT_KEY:
+            _do_write();
+            json->state = JSON_STATE_OBJECT_VALUE;
+            break;
+        default:
+            ERROR("Unexpected string");
+            DEBUG_STATE(json);
+            json->state = JSON_STATE_ERROR;
+    }
+}
+
+void json_base64_string(json_stream *json, const char *x, size_t size) {
+    if (json->state == JSON_STATE_ERROR)
+        return;
+
+    void _do_write() {
+        json_put(json, '"');
+
+        while (size) {
+            size_t available = json->size - 1 - json->pos;
+            size_t chunk_size = (available + 3)/4*3;
+            if (chunk_size > size)
+                chunk_size = size;
+
+            base64_encode((byte *)x, chunk_size, json->buffer + json->pos);
+            json->pos += base64_encoded_size((byte *)x, chunk_size);
+
+            size -= chunk_size;
+            x += chunk_size;
+            if (size)
+                json_flush(json);
+        }
+
         json_put(json, '"');
     }
 
