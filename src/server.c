@@ -3418,6 +3418,13 @@ int homekit_server_on_body(http_parser *parser, const char *data, size_t length)
     return 0;
 }
 
+int homekit_server_on_message_begin(http_parser *parser) {
+    client_context_t *context = parser->data;
+    context->server->request_completed = false;
+
+    return 0;
+}
+
 int homekit_server_on_message_complete(http_parser *parser) {
     client_context_t *context = parser->data;
 
@@ -3486,6 +3493,7 @@ int homekit_server_on_message_complete(http_parser *parser) {
 static http_parser_settings homekit_http_parser_settings = {
     .on_url = homekit_server_on_url,
     .on_body = homekit_server_on_body,
+    .on_message_begin = homekit_server_on_message_begin,
     .on_message_complete = homekit_server_on_message_complete,
 };
 
