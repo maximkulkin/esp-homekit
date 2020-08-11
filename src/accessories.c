@@ -60,65 +60,64 @@ void homekit_value_copy(homekit_value_t *dst, homekit_value_t *src) {
 
     dst->format = src->format;
     dst->is_null = src->is_null;
+    dst->is_static = src->is_static;
 
-    if (!src->is_null) {
-        switch (src->format) {
-            case homekit_format_bool:
-                dst->bool_value = src->bool_value;
-                break;
-            case homekit_format_uint8:
-                dst->uint8_value = src->uint8_value;
-                break;
-            case homekit_format_uint16:
-                dst->uint16_value = src->uint16_value;
-                break;
-            case homekit_format_uint32:
-                dst->uint32_value = src->uint32_value;
-                break;
-            case homekit_format_uint64:
-                dst->uint64_value = src->uint64_value;
-                break;
-            case homekit_format_int:
-                dst->int_value = src->int_value;
-                break;
-            case homekit_format_float:
-                dst->float_value = src->float_value;
-                break;
-            case homekit_format_string:
-                if (src->is_static) {
-                    dst->string_value = src->string_value;
-                    dst->is_static = true;
-                } else {
-                    dst->string_value = strdup(src->string_value);
-                }
-                break;
-            case homekit_format_tlv: {
-                if (src->is_static) {
-                    dst->tlv_values = src->tlv_values;
-                    dst->is_static = true;
-                } else {
-                    dst->tlv_values = tlv_new();
-                    for (tlv_t *v=src->tlv_values->head; v; v=v->next) {
-                      tlv_add_value(dst->tlv_values, v->type, v->value, v->size);
-                    }
-                }
-                break;
+    if (src->is_null)
+        return;
+
+    switch (src->format) {
+        case homekit_format_bool:
+            dst->bool_value = src->bool_value;
+            break;
+        case homekit_format_uint8:
+            dst->uint8_value = src->uint8_value;
+            break;
+        case homekit_format_uint16:
+            dst->uint16_value = src->uint16_value;
+            break;
+        case homekit_format_uint32:
+            dst->uint32_value = src->uint32_value;
+            break;
+        case homekit_format_uint64:
+            dst->uint64_value = src->uint64_value;
+            break;
+        case homekit_format_int:
+            dst->int_value = src->int_value;
+            break;
+        case homekit_format_float:
+            dst->float_value = src->float_value;
+            break;
+        case homekit_format_string:
+            if (src->is_static) {
+                dst->string_value = src->string_value;
+            } else {
+                dst->string_value = strdup(src->string_value);
             }
-            case homekit_format_data:
-                if (src->is_static) {
-                    dst->data_value = src->data_value;
-                    dst->data_size = src->data_size;
-                    dst->is_static = true;
-                } else {
-                    dst->data_size = src->data_size;
-                    dst->data_value = malloc(src->data_size);
-                    memcpy(dst->data_value, src->data_value, src->data_size);
+            break;
+        case homekit_format_tlv: {
+            if (src->is_static) {
+                dst->tlv_values = src->tlv_values;
+            } else {
+                dst->tlv_values = tlv_new();
+                for (tlv_t *v=src->tlv_values->head; v; v=v->next) {
+                  tlv_add_value(dst->tlv_values, v->type, v->value, v->size);
                 }
-                break;
-            default:
-                // unknown format
-                break;
+            }
+            break;
         }
+        case homekit_format_data:
+            if (src->is_static) {
+                dst->data_value = src->data_value;
+                dst->data_size = src->data_size;
+            } else {
+                dst->data_size = src->data_size;
+                dst->data_value = malloc(src->data_size);
+                memcpy(dst->data_value, src->data_value, src->data_size);
+            }
+            break;
+        default:
+            // unknown format
+            break;
     }
 }
 
@@ -130,25 +129,28 @@ homekit_value_t *homekit_value_clone(homekit_value_t *value) {
 }
 
 void homekit_value_destruct(homekit_value_t *value) {
-    if (!value->is_null) {
-        switch (value->format) {
-            case homekit_format_string:
-                if (!value->is_static && value->string_value)
-                    free(value->string_value);
-                break;
-            case homekit_format_tlv:
-                if (!value->is_static && value->tlv_values)
-                    tlv_free(value->tlv_values);
-                break;
-            case homekit_format_data:
-                if (!value->is_static && value->data_value)
-                    free(value->data_value);
-                break;
-            default:
-                // unknown format
-                break;
-        }
+    if (value->is_null)
+        return;
+
+    switch (value->format) {
+        case homekit_format_string:
+            if (!value->is_static && value->string_value)
+                free(value->string_value);
+            break;
+        case homekit_format_tlv:
+            if (!value->is_static && value->tlv_values)
+                tlv_free(value->tlv_values);
+            break;
+        case homekit_format_data:
+            if (!value->is_static && value->data_value)
+                free(value->data_value);
+            break;
+        default:
+            // unknown format
+            break;
     }
+
+    value->is_null = true;
 }
 
 void homekit_value_free(homekit_value_t *value) {
