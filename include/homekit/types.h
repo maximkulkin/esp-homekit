@@ -189,6 +189,7 @@ struct _homekit_characteristic {
 
     // Although spec defines ID as uint64_t, uint16_t should be sufficient in most situations
     uint16_t id;
+    uint16_t notification_id;
     const char *type;
     const char *description;
     homekit_format_t format;

@@ -13,10 +13,12 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 #elif defined(ESP_OPEN_RTOS)
 #include <FreeRTOS.h>
 #include <task.h>
 #include <queue.h>
+#include <semphr.h>
 #else
 #error "Unknown target platform"
 #endif
@@ -28,6 +30,7 @@
 
 #include "constants.h"
 #include "base64.h"
+#include "bitset.h"
 #include "crypto.h"
 #include "pairing.h"
 #include "storage.h"
@@ -102,6 +105,12 @@ typedef struct {
 
 
 typedef struct {
+    homekit_characteristic_t *ch;
+    homekit_value_t value;
+} characteristic_notification_info_t;
+
+
+typedef struct {
     char accessory_id[ACCESSORY_ID_SIZE + 1];
     ed25519_key accessory_key;
 
@@ -135,13 +144,26 @@ typedef struct {
 
     json_stream *json;
 
+    SemaphoreHandle_t notification_lock;
+    uint16_t notify_count;
+    characteristic_notification_info_t *notifications;
+    bitset_t *subscriptions;
+    bool has_notifications;
+    bitset_t *has_notification;
+
     int client_count;
     client_context_t *clients;
+    bitset_t *client_ids;
 } homekit_server_t;
+
+
+static homekit_server_t *server = NULL;
 
 
 struct _client_context_t {
     homekit_server_t *server;
+
+    uint8_t id;
     int socket;
 
     int pairing_id;
@@ -158,7 +180,6 @@ struct _client_context_t {
     int count_reads;
     int count_writes;
 
-    QueueHandle_t event_queue;
     pair_verify_context_t *verify_context;
 
     struct _client_context_t *next;
@@ -203,11 +224,48 @@ homekit_server_t *server_new() {
         return NULL;
     }
 
+    server->client_ids = bitset_new(HOMEKIT_MAX_CLIENTS);
+
+    server->notification_lock = xSemaphoreCreateBinary();
+    if (!server->notification_lock) {
+        bitset_free(server->client_ids);
+        json_free(server->json);
+        free(server);
+        return NULL;
+    }
+
+    xSemaphoreGive(server->notification_lock);
+
+    server->has_notifications = false;
+    server->subscriptions = NULL;
+    server->notifications = NULL;
+    server->has_notification = NULL;
+
     return server;
 }
 
 
 void server_free(homekit_server_t *server) {
+    if (server->client_ids) {
+        bitset_free(server->client_ids);
+    }
+
+    if (server->has_notification) {
+        bitset_free(server->has_notification);
+    }
+
+    if (server->notifications) {
+        free(server->notifications);
+    }
+
+    if (server->subscriptions) {
+        bitset_free(server->subscriptions);
+    }
+
+    if (server->notification_lock) {
+        vSemaphoreDelete(server->notification_lock);
+    }
+
     if (server->json) {
         json_free(server->json);
     }
@@ -236,9 +294,9 @@ void server_free(homekit_server_t *server) {
 #define TLV_DEBUG(values)
 #endif
 
-#define CLIENT_DEBUG(client, message, ...) DEBUG("[Client%2d] " message, client->socket, ##__VA_ARGS__)
-#define CLIENT_INFO(client, message, ...)   INFO("[Client%2d] " message, client->socket, ##__VA_ARGS__)
-#define CLIENT_ERROR(client, message, ...) ERROR("[Client%2d] " message, client->socket, ##__VA_ARGS__)
+#define CLIENT_DEBUG(client, message, ...) DEBUG("[Client%2d] " message, client->id+1, ##__VA_ARGS__)
+#define CLIENT_INFO(client, message, ...) INFO("[Client%2d] " message, client->id+1, ##__VA_ARGS__)
+#define CLIENT_ERROR(client, message, ...) ERROR("[Client%2d] " message, client->id+1, ##__VA_ARGS__)
 
 void tlv_debug(const tlv_values_t *values) {
     DEBUG("Got following TLV values:");
@@ -370,6 +428,7 @@ client_context_t *client_context_new() {
     }
 
     c->server = NULL;
+    c->id = 0;
 
     c->pairing_id = -1;
     c->encrypted = false;
@@ -377,10 +436,7 @@ client_context_t *client_context_new() {
     c->count_writes = 0;
 
     c->disconnect = false;
-
-    c->event_queue = xQueueCreate(20, sizeof(characteristic_event_t));
     c->verify_context = NULL;
-
     c->next = NULL;
 
     return c;
@@ -390,9 +446,6 @@ client_context_t *client_context_new() {
 void client_context_free(client_context_t *c) {
     if (c->verify_context)
         pair_verify_context_free(c->verify_context);
-
-    if (c->event_queue)
-        vQueueDelete(c->event_queue);
 
     free(c);
 }
@@ -424,9 +477,6 @@ void pairing_context_free(pairing_context_t *context) {
 }
 
 
-void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *client);
-
-
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
     json_string(json, "aid"); json_uint32(json, ch->service->accessory->id);
     json_string(json, "iid"); json_uint32(json, ch->id);
@@ -453,7 +503,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     }
 
     if ((format & characteristic_format_events) && (ch->permissions & homekit_permissions_notify)) {
-        bool events = homekit_characteristic_has_notify_callback(ch, client_notify_characteristic, client);
+        bool events = bitset_isset(client->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
         json_string(json, "ev"); json_boolean(json, events);
     }
 
@@ -778,30 +828,6 @@ int client_decrypt(
 void homekit_setup_mdns(homekit_server_t *server);
 
 
-void client_notify_characteristic(homekit_characteristic_t *ch, homekit_value_t value, void *context) {
-    client_context_t *client = context;
-
-    if (client->current_characteristic == ch && client->current_value && homekit_value_equal(client->current_value, &value))
-        // This value is set by this client, no need to send notification
-        return;
-
-    DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
-
-    if (!client->event_queue) {
-        ERROR("Client has no event queue. Skipping notification");
-        return;
-    }
-
-    characteristic_event_t event;
-    event.characteristic = ch;
-    homekit_value_copy(&event.value, &value);
-
-    DEBUG("Sending event to client %d", client->socket);
-
-    xQueueSendToBack(client->event_queue, &event, 10);
-}
-
-
 void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_t *data_sizes) {
 #if HOMEKIT_DEBUG
     size_t data_size = 0;
@@ -864,40 +890,6 @@ typedef struct _client_event {
     const homekit_characteristic_t *characteristic;
     homekit_value_t value;
 } client_event_t;
-
-
-void send_client_events(client_context_t *context, client_event_t *events, size_t events_count) {
-    CLIENT_DEBUG(context, "Sending EVENT");
-    DEBUG_HEAP();
-
-    static byte http_headers[] =
-        "EVENT/1.0 200 OK\r\n"
-        "Content-Type: application/hap+json\r\n"
-        "Transfer-Encoding: chunked\r\n\r\n";
-
-    client_send(context, http_headers, sizeof(http_headers)-1);
-
-    json_stream *json = context->server->json;
-
-    json_set_context(json, context);
-    json_reset(json);
-
-    json_object_start(json);
-    json_string(json, "characteristics"); json_array_start(json);
-
-    for (int i=0; i < events_count; i++) {
-        json_object_start(json);
-        write_characteristic_json(json, context, events[i].characteristic, 0, &events[i].value);
-        json_object_end(json);
-    }
-
-    json_array_end(json);
-    json_object_end(json);
-
-    json_flush(json);
-
-    client_send_chunk(NULL, 0, context);
-}
 
 
 void send_tlv_response(client_context_t *context, tlv_values_t *values);
@@ -2906,10 +2898,10 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             }
 
             if (j_events->type == cJSON_True) {
-                homekit_characteristic_add_notify_callback(ch, client_notify_characteristic, context);
+                bitset_set(context->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + context->id);
                 CLIENT_INFO(context, "Subscribed to notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             } else {
-                homekit_characteristic_remove_notify_callback(ch, client_notify_characteristic, context);
+                bitset_clear(context->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + context->id);
                 CLIENT_INFO(context, "Unsubscribed from notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             }
         }
@@ -3563,18 +3555,17 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
     FD_CLR(context->socket, &server->fds);
     server->client_count--;
 
+    bitset_clear(server->client_ids, context->id);
+    for (uint16_t nid=0; nid < server->notify_count; nid++) {
+        bitset_clear(server->subscriptions, nid * HOMEKIT_MAX_CLIENTS + context->id);
+    }
+
     close(context->socket);
 
     if (server->pairing_context && server->pairing_context->client == context) {
         pairing_context_free(server->pairing_context);
         server->pairing_context = NULL;
     }
-
-    homekit_accessories_clear_notify_callbacks(
-        server->config->accessories,
-        client_notify_characteristic,
-        context
-    );
 
     HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_CLIENT_DISCONNECTED);
 
@@ -3608,31 +3599,6 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
         return NULL;
     }
 
-    char address_buffer[INET_ADDRSTRLEN];
-
-    struct sockaddr_in addr;
-    socklen_t addr_len = sizeof(addr);
-    if (getpeername(s, (struct sockaddr *)&addr, &addr_len) == 0) {
-        inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
-    } else {
-        strcpy(address_buffer, "?.?.?.?");
-    }
-
-    INFO("[Client%2d] Got new client connection from %s", s, address_buffer);
-
-    homekit_server_close_duplicate_clients(server, addr); //remove old connections with same ip but different port
-
-    client_context_t *context = server->clients;
-    while (context) {
-        if (getpeername(context->socket, (struct sockaddr *)&addr, &addr_len) == 0) {
-            inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
-        } else {
-            strcpy(address_buffer, "?.?.?.?");
-        }
-        CLIENT_INFO(context, " Have existing connection from %s %s",address_buffer,context->disconnect?"X":"");
-        context = context->next;
-    }
-
     const struct timeval rcvtimeout = { 10, 0 }; /* 10 second timeout */
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rcvtimeout, sizeof(rcvtimeout));
 
@@ -3648,22 +3614,64 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     const int maxpkt = 4; /* Drop connection after 4 probes without response */
     setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
 
-    context = client_context_new();
+    client_context_t *context = client_context_new();
     if (!context) {
         ERROR("Failed to allocate memory for client context");
         close(s);
         return NULL;
     }
     context->server = server;
+    context->id = HOMEKIT_MAX_CLIENTS;
+    // find available client ID
+    for (uint8_t id=0; id < HOMEKIT_MAX_CLIENTS; id++) {
+        if (!bitset_isset(server->client_ids, id)) {
+            bitset_set(server->client_ids, id);
+            context->id = id;
+            break;
+        }
+    }
+    if (context->id == HOMEKIT_MAX_CLIENTS) {
+        ERROR("Failed to assign ID for client context");
+        client_context_free(context);
+        close(s);
+        return NULL;
+    }
+
     context->socket = s;
     context->next = server->clients;
-
-    server->clients = context;
 
     FD_SET(s, &server->fds);
     server->client_count++;
     if (s > server->max_fd)
         server->max_fd = s;
+    DEBUG_HEAP();
+
+    char address_buffer[INET_ADDRSTRLEN];
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(s, (struct sockaddr *)&addr, &addr_len) == 0) {
+        inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
+    } else {
+        strcpy(address_buffer, "?.?.?.?");
+    }
+
+    CLIENT_INFO(context, "Got new client connection from %s", address_buffer);
+
+    homekit_server_close_duplicate_clients(server, addr); //remove old connections with same ip but different port
+
+    client_context_t *c = server->clients;
+    while (c) {
+        if (getpeername(c->socket, (struct sockaddr *)&addr, &addr_len) == 0) {
+            inet_ntop(AF_INET, &addr.sin_addr, address_buffer, sizeof(address_buffer));
+        } else {
+            strcpy(address_buffer, "?.?.?.?");
+        }
+        CLIENT_INFO(c, " Have existing connection from %s %s", address_buffer, c->disconnect?"X":"");
+        c = c->next;
+    }
+
+    server->clients = context;
 
     HOMEKIT_NOTIFY_EVENT(server, HOMEKIT_EVENT_CLIENT_CONNECTED);
 
@@ -3671,69 +3679,100 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 }
 
 
-client_context_t *homekit_server_find_client_by_fd(homekit_server_t *server, int fd) {
-    client_context_t *context = server->clients;
-    while (context) {
-        if (context->socket == fd)
-            return context;
-        context = context->next;
-    }
+void homekit_characteristic_notify(homekit_characteristic_t *ch, homekit_value_t value) {
+    if (!(ch->permissions & homekit_permissions_notify))
+        return;
 
-    return NULL;
+    xSemaphoreTake(server->notification_lock, portMAX_DELAY);
+
+    DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
+
+    homekit_value_destruct(&server->notifications[ch->notification_id].value);
+    homekit_value_copy(&server->notifications[ch->notification_id].value, &value);
+
+    bitset_set(server->has_notification, ch->notification_id);
+    server->has_notifications = true;
+
+    xSemaphoreGive(server->notification_lock);
+
+    // backward compatibility
+    homekit_characteristic_change_callback_t *callback = ch->callback;
+    while (callback) {
+        callback->function(ch, value, callback->context);
+        callback = callback->next;
+    }
 }
 
 
 void homekit_server_process_notifications(homekit_server_t *server) {
+    if (!server->has_notifications)
+        return;
+
+    xSemaphoreTake(server->notification_lock, portMAX_DELAY);
+
     client_context_t *context = server->clients;
-
-    client_event_t client_events[10];
-    uint8_t client_events_count;
     while (context) {
-        int i;
+        bool first = true;
 
-        client_events_count = 0;
+        json_stream *json = context->server->json;
+        json_set_context(json, context);
+        json_reset(json);
 
-        characteristic_event_t event;
-        while (xQueueReceive(context->event_queue, &event, 0)) {
-            int client_event_index = -1;
-            for (i=0; i < client_events_count; i++) {
-                if (client_events[i].characteristic == event.characteristic) {
-                    client_event_index = i;
-                    break;
-                }
+        for (uint16_t nid=0; nid < server->notify_count; nid++) {
+            if (!bitset_isset(server->has_notification, nid))
+                continue;
+
+            homekit_characteristic_t *ch = server->notifications[nid].ch;
+            if (!bitset_isset(server->subscriptions, nid * HOMEKIT_MAX_CLIENTS + context->id)) {
+                CLIENT_DEBUG(context, "Not subscribed to characteristic %d.%d, skipping event", ch->service->accessory->id, ch->id);
+                continue;
             }
 
-            if (client_event_index >= 0) {
-                homekit_value_destruct(&client_events[client_event_index].value);
-            } else {
-                if (client_events_count == (sizeof(client_events) / sizeof(*client_events))) {
-                    // No more room, flush events and start over
-                    send_client_events(context, client_events, client_events_count);
+            if (first) {
+                CLIENT_DEBUG(context, "Sending EVENT");
+                DEBUG_HEAP();
 
-                    for (i=0; i < client_events_count; i++) {
-                        homekit_value_destruct(&client_events[i].value);
-                    }
-                    client_events_count = 0;
-                }
+                static byte http_headers[] =
+                    "EVENT/1.0 200 OK\r\n"
+                    "Content-Type: application/hap+json\r\n"
+                    "Transfer-Encoding: chunked\r\n\r\n";
 
-                client_event_index = client_events_count++;
-                client_events[client_event_index].characteristic = event.characteristic;
+                client_send(context, http_headers, sizeof(http_headers)-1);
+
+                json_object_start(json);
+                json_string(json, "characteristics"); json_array_start(json);
+
+                first = false;
             }
 
-            // Move value from event to client_event avoiding unnecessary allocations/frees
-            memcpy(&client_events[client_event_index].value, &event.value, sizeof(event.value));
+            json_object_start(json);
+            write_characteristic_json(json, context, server->notifications[nid].ch, 0, &server->notifications[nid].value);
+            json_object_end(json);
         }
 
-        if (client_events_count) {
-            send_client_events(context, client_events, client_events_count);
+        if (!first) {
+            json_array_end(json);
+            json_object_end(json);
 
-            for (i=0; i < client_events_count; i++) {
-                homekit_value_destruct(&client_events[i].value);
-            }
+            json_flush(json);
+
+            client_send_chunk(NULL, 0, context);
         }
 
         context = context->next;
     }
+
+    for (uint16_t nid=0; nid < server->notify_count; nid++) {
+        if (!bitset_isset(server->has_notification, nid))
+            continue;
+
+        homekit_value_destruct(&server->notifications[nid].value);
+    }
+
+    bitset_clear_all(server->has_notification);
+    server->has_notifications = false;
+
+    xSemaphoreGive(server->notification_lock);
 }
 
 
@@ -4019,13 +4058,64 @@ void homekit_server_init(homekit_server_config_t *config) {
         config->category = config->accessories[0]->category;
     }
 
-    homekit_server_t *server = server_new();
+    server = server_new();
     if (!server) {
         ERROR("Error initializing HomeKit accessory server: "
               "failed to allocate memory for server");
         return;
     }
     server->config = config;
+
+    uint16_t notification_id = 0;
+    for (homekit_accessory_t **accessory_it = config->accessories; *accessory_it; accessory_it++) {
+        for (homekit_service_t **service_it = (*accessory_it)->services; *service_it; service_it++) {
+            for (homekit_characteristic_t **ch_it = (*service_it)->characteristics; *ch_it; ch_it++) {
+                homekit_characteristic_t *ch = *ch_it;
+
+                if (ch->permissions & homekit_permissions_notify) {
+                    ch->notification_id = notification_id++;
+                }
+            }
+        }
+    }
+
+    server->notify_count = notification_id;
+    server->subscriptions = bitset_new(server->notify_count * HOMEKIT_MAX_CLIENTS);
+    if (!server->subscriptions) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for subscriptions");
+        server_free(server);
+        server = NULL;
+        return;
+    }
+    server->notifications = calloc(server->notify_count, sizeof(characteristic_notification_info_t));
+    if (!server->notifications) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for notifications info");
+        server_free(server);
+        server = NULL;
+        return;
+    }
+    server->has_notification = bitset_new(server->notify_count);
+    if (!server->has_notification) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for notifications flags");
+        server_free(server);
+        server = NULL;
+        return;
+    }
+
+    for (homekit_accessory_t **accessory_it = config->accessories; *accessory_it; accessory_it++) {
+        for (homekit_service_t **service_it = (*accessory_it)->services; *service_it; service_it++) {
+            for (homekit_characteristic_t **ch_it = (*service_it)->characteristics; *ch_it; ch_it++) {
+                homekit_characteristic_t *ch = *ch_it;
+
+                if (ch->permissions & homekit_permissions_notify) {
+                    server->notifications[ch->notification_id].ch = ch;
+                }
+            }
+        }
+    }
 
     if (pdPASS != xTaskCreate(homekit_server_task, "HomeKit Server",
                               SERVER_TASK_STACK, server, 1, NULL)) {
