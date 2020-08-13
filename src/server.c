@@ -3573,25 +3573,15 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
 }
 
 
-void homekit_server_close_duplicate_clients(homekit_server_t *server, struct sockaddr_in addr) {
-    struct sockaddr_in old_addr;
-    socklen_t addr_len = sizeof(addr);
-    client_context_t *context = server->clients;
-     
-    while (context) {
-        if ( getpeername(context->socket, (struct sockaddr *)&old_addr, &addr_len) == 0 &&
-             (old_addr.sin_addr.s_addr == addr.sin_addr.s_addr) && 
-             (old_addr.sin_port != addr.sin_port) )
-                context->disconnect = true;
-        context = context->next;
-    }
-}
-
-
 client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     int s = accept(server->listen_fd, (struct sockaddr *)NULL, (socklen_t *)NULL);
-    if (s < 0)
+    if (s < 0) {
+        if (errno == EWOULDBLOCK)
+            return NULL;
+
+        ERROR("Failed to accept connection (errno %d)", errno);
         return NULL;
+    }
 
     if (server->client_count >= HOMEKIT_MAX_CLIENTS) {
         INFO("No more room for client connections (max %d)", HOMEKIT_MAX_CLIENTS);
@@ -3658,7 +3648,6 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
     CLIENT_INFO(context, "Got new client connection from %s", address_buffer);
 
-    homekit_server_close_duplicate_clients(server, addr); //remove old connections with same ip but different port
 
     client_context_t *c = server->clients;
     while (c) {
@@ -3808,11 +3797,29 @@ static void homekit_run_server(homekit_server_t *server)
 
     struct sockaddr_in serv_addr;
     server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server->listen_fd < 0) {
+        ERROR("Failed to create server socket (errno %d)", errno);
+        return;
+    }
     memset(&serv_addr, '0', sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(PORT);
     bind(server->listen_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+
+    int opt = lwip_fcntl(server->listen_fd, F_GETFL, 0);
+    if (opt < 0) {
+        ERROR("Failed to read configuration to server socket (errno %d)", errno);
+        close(server->listen_fd);
+        return;
+    }
+    opt |= O_NONBLOCK;
+    if (lwip_fcntl(server->listen_fd, F_SETFL, opt) == -1) {
+        ERROR("Failed to write configuration to server socket (errno %d)", errno);
+        close(server->listen_fd);
+        return;
+    }
+
     listen(server->listen_fd, 10);
 
     FD_SET(server->listen_fd, &server->fds);
@@ -3826,12 +3833,19 @@ static void homekit_run_server(homekit_server_t *server)
         struct timeval timeout = { 1, 0 }; /* 1 second timeout */
         int triggered_nfds = select(server->max_fd + 1, &read_fds, NULL, NULL, &timeout);
         if (triggered_nfds > 0) {
+            client_context_t *context = NULL;
             if (FD_ISSET(server->listen_fd, &read_fds)) {
-                homekit_server_accept_client(server);
+                while (true) {
+                    context = homekit_server_accept_client(server);
+                    if (!context)
+                        break;
+
+                    homekit_client_process(context);
+                }
                 triggered_nfds--;
             }
 
-            client_context_t *context = server->clients;
+            context = server->clients;
             while (context && triggered_nfds) {
                 if (FD_ISSET(context->socket, &read_fds)) {
                     homekit_client_process(context);
