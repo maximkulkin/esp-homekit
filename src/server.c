@@ -3714,8 +3714,9 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             if (!bitset_isset(server->has_notification, nid))
                 continue;
 
-            homekit_characteristic_t *ch = server->notifications[nid].ch;
             if (!bitset_isset(server->subscriptions, nid * HOMEKIT_MAX_CLIENTS + context->id)) {
+                homekit_characteristic_t *ch = server->notifications[nid].ch;
+                (void)ch;
                 CLIENT_DEBUG(context, "Not subscribed to characteristic %d.%d, skipping event", ch->service->accessory->id, ch->id);
                 continue;
             }
