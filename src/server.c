@@ -3669,6 +3669,9 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
 
 
 void homekit_characteristic_notify(homekit_characteristic_t *ch, homekit_value_t value) {
+    if (!server)
+        return;
+
     if (!(ch->permissions & homekit_permissions_notify))
         return;
 
