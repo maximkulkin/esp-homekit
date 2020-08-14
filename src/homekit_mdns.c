@@ -461,7 +461,7 @@ static uint8_t *mdns_add_PTR_answer(mdns_server_t *server, uint8_t *p, uint16_t 
     p = pp + MDNS_ANSWER_SIZE;
     p = mdns_write_name(server, p, NAME_SRV, refs);
 
-    mdns_write_answer(pp, DNS_RRTYPE_PTR, DNS_RRCLASS_IN | DNS_CACHE_FLUSH_RRCLASS_FLAG,
+    mdns_write_answer(pp, DNS_RRTYPE_PTR, DNS_RRCLASS_IN,
                       server->service_ttl, p - pp - MDNS_ANSWER_SIZE);
 
     return p;
