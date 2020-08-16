@@ -395,13 +395,24 @@ homekit_accessory_t* homekit_accessory_clone(homekit_accessory_t* ac) {
 }
 
 
-homekit_value_t homekit_characteristic_ex_old_getter(const homekit_characteristic_t *ch) {
-    return ch->getter();
+homekit_value_t homekit_characteristic_default_getter_ex(const homekit_characteristic_t *ch) {
+    if (ch->getter) {
+        return ch->getter();
+    }
+
+    homekit_value_t value = ch->value;
+    value.is_static = true;
+    return value;
 }
 
 
-void homekit_characteristic_ex_old_setter(homekit_characteristic_t *ch, homekit_value_t value) {
-    ch->setter(value);
+void homekit_characteristic_default_setter_ex(homekit_characteristic_t *ch, homekit_value_t value) {
+    if (ch->setter) {
+        ch->setter(value);
+    } else {
+        homekit_value_destruct(&ch->value);
+        homekit_value_copy(&ch->value, &value);
+    }
 }
 
 
@@ -436,16 +447,6 @@ void homekit_accessories_init(homekit_accessory_t **accessories) {
                 } else {
                     ch->id = iid++;
                 }
-
-                if (!ch->getter_ex && ch->getter) {
-                    ch->getter_ex = homekit_characteristic_ex_old_getter;
-                }
-
-                if (!ch->setter_ex && ch->setter) {
-                    ch->setter_ex = homekit_characteristic_ex_old_setter;
-                }
-
-                ch->value.format = ch->format;
             }
         }
     }

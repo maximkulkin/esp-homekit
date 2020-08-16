@@ -239,6 +239,9 @@ struct _homekit_accessory {
     homekit_service_t **services;
 };
 
+homekit_value_t homekit_characteristic_default_getter_ex(const homekit_characteristic_t *ch);
+void homekit_characteristic_default_setter_ex(homekit_characteristic_t *ch, homekit_value_t value);
+
 // Macro to define accessory
 #define HOMEKIT_ACCESSORY(...) \
     &(homekit_accessory_t) { \
@@ -260,6 +263,8 @@ struct _homekit_accessory {
 // Macro to define characteristic inside service definition
 #define HOMEKIT_CHARACTERISTIC(name, ...) \
     &(homekit_characteristic_t) { \
+        .getter_ex = homekit_characteristic_default_getter_ex, \
+        .setter_ex = homekit_characteristic_default_setter_ex, \
         HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
     }
 
@@ -267,6 +272,8 @@ struct _homekit_accessory {
 // Requires HOMEKIT_DECLARE_CHARACTERISTIC_<name>() macro
 #define HOMEKIT_CHARACTERISTIC_(name, ...) \
     { \
+        .getter_ex = homekit_characteristic_default_getter_ex, \
+        .setter_ex = homekit_characteristic_default_setter_ex, \
         HOMEKIT_DECLARE_CHARACTERISTIC_ ## name( __VA_ARGS__ ) \
     }
 
@@ -287,6 +294,8 @@ struct _homekit_accessory {
     .format = homekit_format_uint8, \
     .unit = homekit_unit_none, \
     .permissions = homekit_permissions_paired_read, \
+    .getter_ex = homekit_characteristic_default_getter_ex, \
+    .setter_ex = homekit_characteristic_default_setter_ex, \
     ##__VA_ARGS__
 
 

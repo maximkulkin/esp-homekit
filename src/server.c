@@ -589,7 +589,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     }
 
     if (ch->permissions & homekit_permissions_paired_read) {
-        homekit_value_t v = value ? *value : ch->getter_ex ? ch->getter_ex(ch) : ch->value;
+        homekit_value_t v = value ? *value : ch->getter_ex(ch);
 
         if (v.is_null) {
             // json_string(json, "value"); json_null(json);
@@ -695,7 +695,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
             }
         }
 
-        if (!value && ch->getter_ex) {
+        if (!value) {
             // called getter to get value, need to free it
             homekit_value_destruct(&v);
         }
@@ -2582,11 +2582,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with boolean %s", aid, iid, ch->description, value ? "true" : "false");
 
                     h_value = HOMEKIT_BOOL(value);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        ch->value = h_value;
-                    }
+
                     break;
                 }
                 case homekit_format_uint8:
@@ -2709,11 +2705,6 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                             return HAPStatus_InvalidValue;
                     }
 
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        ch->value = h_value;
-                    }
                     break;
                 }
                 case homekit_format_float: {
@@ -2732,11 +2723,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with %g", aid, iid, ch->description, value);
 
                     h_value = HOMEKIT_FLOAT(value);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        ch->value = h_value;
-                    }
+
                     break;
                 }
                 case homekit_format_string: {
@@ -2756,12 +2743,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with \"%s\"", aid, iid, ch->description, value);
 
                     h_value = HOMEKIT_STRING(value);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        homekit_value_destruct(&ch->value);
-                        homekit_value_copy(&ch->value, &h_value);
-                    }
+
                     break;
                 }
                 case homekit_format_tlv: {
@@ -2816,12 +2798,6 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     }
 
                     h_value = HOMEKIT_TLV(tlv_values);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        homekit_value_destruct(&ch->value);
-                        homekit_value_copy(&ch->value, &h_value);
-                    }
 
                     tlv_free(tlv_values);
                     break;
@@ -2862,16 +2838,16 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
                     CLIENT_INFO(context, "Updating characteristic %d.%d (\"%s\") with Data:", aid, iid, ch->description);
 
                     h_value = HOMEKIT_DATA(data, data_size);
-                    if (ch->setter_ex) {
-                        ch->setter_ex(ch, h_value);
-                    } else {
-                        homekit_value_destruct(&ch->value);
-                        homekit_value_copy(&ch->value, &h_value);
-                    }
 
                     break;
                 }
+                default: {
+                    CLIENT_ERROR(context, "Failed to update %d.%d: unknown characteristic format %d", aid, iid, ch->format);
+                    return HAPStatus_InvalidValue;
+                }
             }
+
+            ch->setter_ex(ch, h_value);
 
             if (!h_value.is_null) {
                 context->current_characteristic = ch;
