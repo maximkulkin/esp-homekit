@@ -2410,7 +2410,7 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
     client_send_chunk(NULL, 0, context);
     
-    context->encrypted = ENCRYPTION_STATE_GOT_ACCESORIES;
+    context->encrypted = ENCRYPTION_STATE_GOT_ACCESSORIES;
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
