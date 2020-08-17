@@ -82,6 +82,13 @@ typedef enum {
     characteristic_format_events = (1 << 4),
 } characteristic_format_t;
 
+typedef enum {
+    ENCRYPTION_STATE_FALSE = 0,
+    ENCRYPTION_STATE_VERIFIED,
+    ENCRYPTION_STATE_GOT_ACCESSORIES,
+    ENCRYPTION_STATE_IN_USE,
+} ENCRYPTION_STATE;
+
 
 typedef struct {
     Srp *srp;
@@ -174,7 +181,7 @@ struct _client_context_t {
     homekit_characteristic_t *current_characteristic;
     homekit_value_t *current_value;
 
-    bool encrypted;
+    int encrypted;
     byte read_key[32];
     byte write_key[32];
     int count_reads;
@@ -431,7 +438,7 @@ client_context_t *client_context_new() {
     c->id = 0;
 
     c->pairing_id = -1;
-    c->encrypted = false;
+    c->encrypted = ENCRYPTION_STATE_FALSE;
     c->count_reads = 0;
     c->count_writes = 0;
 
@@ -1054,6 +1061,8 @@ int homekit_client_send(unsigned char *data, size_t size) {
 void homekit_server_on_identify(client_context_t *context) {
     CLIENT_INFO(context, "Identify");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (context->server->paired) {
         // Already paired
@@ -2309,7 +2318,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             context->pairing_id = pairing_id;
             context->permissions = permissions;
-            context->encrypted = true;
+            context->encrypted = ENCRYPTION_STATE_VERIFIED;
 
             HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_CLIENT_VERIFIED);
 
@@ -2400,11 +2409,15 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     json_flush(json);
 
     client_send_chunk(NULL, 0, context);
+    
+    context->encrypted = ENCRYPTION_STATE_GOT_ACCESORIES;
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (context->server->endpoint_params.ids[0].aid == 0) {
         CLIENT_ERROR(context, "Invalid get characteristics request: missing ID parameter");
@@ -2499,6 +2512,8 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
     CLIENT_INFO(context, "Update Characteristics");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     cJSON *json = cJSON_Parse((char *)data);
 
@@ -2973,6 +2988,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
     DEBUG("HomeKit Pairings");
     DEBUG_HEAP();
 
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
+
     tlv_values_t *message = tlv_new();
     if (!message) {
         CLIENT_ERROR(context, "Failed to allocate memory for TLV payload");
@@ -3239,6 +3256,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 void homekit_server_on_resource(client_context_t *context) {
     CLIENT_INFO(context, "Resource");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (!context->server->config->on_resource) {
         send_404_response(context);
