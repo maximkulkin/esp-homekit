@@ -329,10 +329,6 @@ homekit_characteristic_t *homekit_characteristic_clone(homekit_characteristic_t 
     homekit_characteristic_clone(HOMEKIT_CHARACTERISTIC(name, ## __VA_ARGS__))
 
 
-// Init accessories by automatically assigning IDs to all
-// accessories/services/characteristics, normalizing internal data.
-void homekit_accessories_init(homekit_accessory_t **accessories);
-
 // Find accessory by ID. Returns NULL if not found
 homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid);
 // Find service inside accessory by service type. Returns NULL if not found

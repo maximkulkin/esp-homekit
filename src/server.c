@@ -105,7 +105,27 @@ typedef struct {
 
 
 typedef struct {
+    homekit_accessory_t *accessory;
+    uint16_t aid;
+} accessory_info_t;
+
+
+typedef struct {
+    homekit_service_t *service;
+    uint16_t iid;
+} service_info_t;
+
+
+typedef struct {
     homekit_characteristic_t *ch;
+    uint16_t aid;
+    uint16_t iid;
+    uint16_t notification_id;
+} characteristic_info_t;
+
+
+typedef struct {
+    uint16_t characteristic_idx;
     homekit_value_t value;
 } characteristic_notification_info_t;
 
@@ -145,8 +165,19 @@ typedef struct {
     json_stream *json;
 
     SemaphoreHandle_t notification_lock;
+
+    uint16_t accessory_count;
+    accessory_info_t *accessory_infos;
+
+    uint16_t service_count;
+    service_info_t *service_infos;
+
+    uint16_t characteristic_count;
+    characteristic_info_t *characteristic_infos;
+
     uint16_t notify_count;
     characteristic_notification_info_t *notifications;
+
     bitset_t *subscriptions;
     bool has_notifications;
     bitset_t *has_notification;
@@ -186,12 +217,6 @@ struct _client_context_t {
 };
 
 
-typedef struct {
-    homekit_characteristic_t *characteristic;
-    homekit_value_t value;
-} characteristic_event_t;
-
-
 void client_context_free(client_context_t *c);
 void pairing_context_free(pairing_context_t *context);
 void client_send_chunk(byte *data, size_t size, void *arg);
@@ -223,6 +248,13 @@ homekit_server_t *server_new() {
         free(server);
         return NULL;
     }
+
+    server->accessory_count = 0;
+    server->accessory_infos = NULL;
+    server->service_count = 0;
+    server->service_infos = NULL;
+    server->characteristic_count = 0;
+    server->characteristic_infos = NULL;
 
     server->client_ids = bitset_new(HOMEKIT_MAX_CLIENTS);
 
@@ -264,6 +296,18 @@ void server_free(homekit_server_t *server) {
 
     if (server->notification_lock) {
         vSemaphoreDelete(server->notification_lock);
+    }
+
+    if (server->characteristic_infos) {
+        free(server->characteristic_infos);
+    }
+
+    if (server->service_infos) {
+        free(server->service_infos);
+    }
+
+    if (server->accessory_infos) {
+        free(server->accessory_infos);
     }
 
     if (server->json) {
@@ -476,10 +520,161 @@ void pairing_context_free(pairing_context_t *context) {
     free(context);
 }
 
+accessory_info_t *find_accessory_info(const homekit_server_t *server, const homekit_accessory_t *accessory) {
+    uint16_t l = 0, r = server->accessory_count;
+    while (l < r) {
+        uint16_t m = l + (r - l) / 2;
+        if (server->accessory_infos[m].accessory == accessory) {
+            l = m;
+            break;
+        }
+
+        if (server->accessory_infos[m].accessory < accessory) {
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+    if (l >= server->accessory_count)
+        return NULL;
+
+    return &server->accessory_infos[l];
+}
+
+service_info_t *find_service_info(const homekit_server_t *server, const homekit_service_t *service) {
+    uint16_t l = 0, r = server->service_count;
+    while (l < r) {
+        uint16_t m = l + (r - l) / 2;
+        if (server->service_infos[m].service == service) {
+            l = m;
+            break;
+        }
+
+        if (server->service_infos[m].service < service) {
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+    if (l >= server->service_count)
+        return NULL;
+
+    return &server->service_infos[l];
+}
+
+characteristic_info_t *find_characteristic_info_by_characteristic(
+    const homekit_server_t *server, const homekit_characteristic_t *ch
+) {
+    uint16_t l = 0, r = server->characteristic_count;
+    while (l < r) {
+        uint16_t m = l + (r - l) / 2;
+        if (server->characteristic_infos[m].ch == ch) {
+            l = m;
+            break;
+        }
+
+        if (server->characteristic_infos[m].ch < ch) {
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+    if (l >= server->characteristic_count)
+        return NULL;
+
+    return &server->characteristic_infos[l];
+}
+
+
+// TODO: deprecate accessories argument
+homekit_accessory_t *homekit_accessory_by_id(homekit_accessory_t **accessories, int aid) {
+    for (uint16_t i=0; i < server->accessory_count; i++) {
+        if (server->accessory_infos[i].aid == aid)
+            return server->accessory_infos[i].accessory;
+    }
+    return NULL;
+}
+
+homekit_service_t *homekit_service_by_type(homekit_accessory_t *accessory, const char *type) {
+    for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
+        homekit_service_t *service = *service_it;
+
+        if (!strcmp(service->type, type))
+            return service;
+    }
+
+    return NULL;
+}
+
+homekit_characteristic_t *homekit_service_characteristic_by_type(homekit_service_t *service, const char *type) {
+    for (homekit_characteristic_t **ch_it = service->characteristics; *ch_it; ch_it++) {
+        homekit_characteristic_t *ch = *ch_it;
+
+        if (!strcmp(ch->type, type))
+            return ch;
+    }
+
+    return NULL;
+}
+
+// TODO: deprecate accessories argument
+homekit_characteristic_t *homekit_characteristic_by_aid_and_iid(homekit_accessory_t **accessories, int aid, int iid) {
+    for (uint16_t i=0; i < server->characteristic_count; i++) {
+        characteristic_info_t *ch_info = &server->characteristic_infos[i];
+        if (ch_info->aid == aid && ch_info->iid == iid)
+            return ch_info->ch;
+    }
+
+    return NULL;
+}
+
+
+homekit_characteristic_t *homekit_characteristic_find_by_type(homekit_accessory_t **accessories, int aid, const char *type) {
+    for (uint16_t i=0; i < server->characteristic_count; i++) {
+        characteristic_info_t *ch_info = &server->characteristic_infos[i];
+        if (ch_info->aid == aid && !strcmp(ch_info->ch->type, type))
+            return ch_info->ch;
+    }
+
+    return NULL;
+}
+
+
+bool client_has_subscribed_to_characteristic_events(client_context_t *client, const homekit_characteristic_t *ch) {
+    homekit_server_t *server = client->server;
+
+    characteristic_info_t *info = find_characteristic_info_by_characteristic(server, ch);
+    if (!info)
+        return false;
+
+    return bitset_isset(server->subscriptions, info->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
+}
+
+void client_subscribe_to_characteristic_events(client_context_t *client, const homekit_characteristic_t *ch) {
+    characteristic_info_t *info = find_characteristic_info_by_characteristic(server, ch);
+    if (!info)
+        return;
+
+    bitset_set(client->server->subscriptions, info->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
+}
+
+void client_unsubscribe_from_characteristic_events(client_context_t *client, const homekit_characteristic_t *ch) {
+    characteristic_info_t *info = find_characteristic_info_by_characteristic(server, ch);
+    if (!info)
+        return;
+
+    bitset_clear(client->server->subscriptions, info->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
+}
 
 void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
-    json_string(json, "aid"); json_uint32(json, ch->service->accessory->id);
-    json_string(json, "iid"); json_uint32(json, ch->id);
+    characteristic_info_t *ch_info = find_characteristic_info_by_characteristic(client->server, ch);
+    if (!ch_info) {
+        ERROR("Failed to lookup characteristic info for characteristic \"%s\"", ch->description);
+        return;
+    }
+
+    json_string(json, "aid"); json_uint32(json, ch_info->aid);
+    json_string(json, "iid"); json_uint32(json, ch_info->iid);
 
     if (format & characteristic_format_type) {
         json_string(json, "type"); json_string(json, ch->type);
@@ -503,7 +698,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     }
 
     if ((format & characteristic_format_events) && (ch->permissions & homekit_permissions_notify)) {
-        bool events = bitset_isset(client->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
+        bool events = client_has_subscribed_to_characteristic_events(client, ch);
         json_string(json, "ev"); json_boolean(json, events);
     }
 
@@ -2349,7 +2544,13 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
         json_object_start(json);
 
-        json_string(json, "aid"); json_uint32(json, accessory->id);
+        accessory_info_t *a_info = find_accessory_info(context->server, accessory);
+        if (!a_info) {
+            ERROR("Failed to lookup accessory info, skipping");
+            continue;
+        }
+
+        json_string(json, "aid"); json_uint32(json, a_info->aid);
         json_string(json, "services"); json_array_start(json);
 
         for (homekit_service_t **service_it = accessory->services; *service_it; service_it++) {
@@ -2357,14 +2558,25 @@ void homekit_server_on_get_accessories(client_context_t *context) {
 
             json_object_start(json);
 
-            json_string(json, "iid"); json_uint32(json, service->id);
+            service_info_t *s_info = find_service_info(context->server, service);
+            if (!s_info) {
+                ERROR("Failed to lookup service info for service type \"%s\", skipping", service->type);
+                continue;
+            }
+
+            json_string(json, "iid"); json_uint32(json, s_info->iid);
             json_string(json, "type"); json_string(json, service->type);
             json_string(json, "hidden"); json_boolean(json, service->hidden);
             json_string(json, "primary"); json_boolean(json, service->primary);
             if (service->linked) {
                 json_string(json, "linked"); json_array_start(json);
                 for (homekit_service_t **linked=service->linked; *linked; linked++) {
-                    json_uint32(json, (*linked)->id);
+                    service_info_t *linked_info = find_service_info(context->server, *linked);
+                    if (!linked_info) {
+                        ERROR("Failed to lookup service info for linked service of type \"%s\", skipping", (*linked)->type);
+                        continue;
+                    }
+                    json_uint32(json, linked_info->iid);
                 }
                 json_array_end(json);
             }
@@ -2874,10 +3086,10 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             }
 
             if (j_events->type == cJSON_True) {
-                bitset_set(context->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + context->id);
+                client_subscribe_to_characteristic_events(context, ch);
                 CLIENT_INFO(context, "Subscribed to notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             } else {
-                bitset_clear(context->server->subscriptions, ch->notification_id * HOMEKIT_MAX_CLIENTS + context->id);
+                client_unsubscribe_from_characteristic_events(context, ch);
                 CLIENT_INFO(context, "Unsubscribed from notifications of characteristic %d.%d (\"%s\")", aid, iid, ch->description);
             }
         }
@@ -3653,12 +3865,18 @@ void homekit_characteristic_notify(homekit_characteristic_t *ch, homekit_value_t
 
     xSemaphoreTake(server->notification_lock, portMAX_DELAY);
 
-    DEBUG("Got characteristic %d.%d change event", ch->service->accessory->id, ch->id);
+    characteristic_info_t *ch_info = find_characteristic_info_by_characteristic(server, ch);
+    if (!ch_info) {
+        ERROR("Trying notify on unknown characteristic \"%s\"", ch->description);
+        return;
+    }
 
-    homekit_value_destruct(&server->notifications[ch->notification_id].value);
-    homekit_value_copy(&server->notifications[ch->notification_id].value, &value);
+    DEBUG("Got characteristic %d.%d change event", ch_info->aid, ch_info->iid);
 
-    bitset_set(server->has_notification, ch->notification_id);
+    homekit_value_destruct(&server->notifications[ch_info->notification_id].value);
+    homekit_value_copy(&server->notifications[ch_info->notification_id].value, &value);
+
+    bitset_set(server->has_notification, ch_info->notification_id);
     server->has_notifications = true;
 
     xSemaphoreGive(server->notification_lock);
@@ -3691,9 +3909,8 @@ void homekit_server_process_notifications(homekit_server_t *server) {
                 continue;
 
             if (!bitset_isset(server->subscriptions, nid * HOMEKIT_MAX_CLIENTS + context->id)) {
-                homekit_characteristic_t *ch = server->notifications[nid].ch;
-                (void)ch;
-                CLIENT_DEBUG(context, "Not subscribed to characteristic %d.%d, skipping event", ch->service->accessory->id, ch->id);
+                characteristic_info_t *ch_info = &server->characteristic_infos[server->notifications[nid].characteristic_idx];
+                CLIENT_DEBUG(context, "Not subscribed to characteristic %d.%d, skipping event", ch_info->aid, ch_info->iid);
                 continue;
             }
 
@@ -3715,7 +3932,8 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             }
 
             json_object_start(json);
-            write_characteristic_json(json, context, server->notifications[nid].ch, 0, &server->notifications[nid].value);
+            characteristic_info_t *ch_info = &server->characteristic_infos[server->notifications[nid].characteristic_idx];
+            write_characteristic_json(json, context, ch_info->ch, 0, &server->notifications[nid].value);
             json_object_end(json);
         }
 
@@ -4004,6 +4222,151 @@ void homekit_server_task(void *args) {
 #define ISDIGIT(x) isdigit((unsigned char)(x))
 #define ISBASE36(x) (isdigit((unsigned char)(x)) || (x >= 'A' && x <= 'Z'))
 
+
+int accessory_info_cmp_accessory(const accessory_info_t *a, const accessory_info_t *b) {
+    return (a->accessory == b->accessory) ? 0 : ((a->accessory < b->accessory) ? -1 : 1);
+}
+
+
+int service_info_cmp_service(const service_info_t *a, const service_info_t *b) {
+    return (a->service == b->service) ? 0 : ((a->service < b->service) ? -1 : 1);
+}
+
+
+int characteristic_info_cmp_characteristic(const characteristic_info_t *a, const characteristic_info_t *b) {
+    return (a->ch == b->ch) ? 0 : ((a->ch < b->ch) ? -1 : 1);
+}
+
+
+int homekit_accessories_init(homekit_server_t *server) {
+    server->accessory_count = 0;
+    server->service_count = 0;
+    server->characteristic_count = 0;
+    server->notify_count = 0;
+
+    for (homekit_accessory_t **accessory_it = server->config->accessories; *accessory_it; accessory_it++) {
+        server->accessory_count++;
+        for (homekit_service_t **service_it = (*accessory_it)->services; *service_it; service_it++) {
+            server->service_count++;
+            for (homekit_characteristic_t **ch_it = (*service_it)->characteristics; *ch_it; ch_it++) {
+                homekit_characteristic_t *ch = *ch_it;
+                server->characteristic_count++;
+
+                if (ch->permissions & homekit_permissions_notify) {
+                    server->notify_count++;
+                }
+            }
+        }
+    }
+
+    server->accessory_infos = calloc(server->accessory_count, sizeof(accessory_info_t));
+    if (!server->accessory_infos) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for accessory infos");
+        return -1;
+    }
+    server->service_infos = calloc(server->service_count, sizeof(service_info_t));
+    if (!server->service_infos) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for service infos");
+        return -1;
+    }
+    server->characteristic_infos = calloc(server->characteristic_count, sizeof(characteristic_info_t));
+    if (!server->characteristic_infos) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for characteristic infos");
+        return -1;
+    }
+
+    server->subscriptions = bitset_new(server->notify_count * HOMEKIT_MAX_CLIENTS);
+    if (!server->subscriptions) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for subscriptions");
+        return -1;
+    }
+
+    server->notifications = calloc(server->notify_count, sizeof(characteristic_notification_info_t));
+    if (!server->notifications) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for notifications info");
+        return -1;
+    }
+
+    server->has_notification = bitset_new(server->notify_count);
+    if (!server->has_notification) {
+        ERROR("Error initializing HomeKit accessory server: "
+              "failed to allocate memory for notifications flags");
+        return -1;
+    }
+
+    uint16_t aid = 1;
+    uint16_t service_idx = 0;
+    uint16_t characteristic_idx = 0;
+    uint16_t notification_idx = 0;
+    for (uint16_t accessory_idx=0; accessory_idx < server->accessory_count; accessory_idx++) {
+        homekit_accessory_t *accessory = server->config->accessories[accessory_idx];
+
+        server->accessory_infos[accessory_idx].accessory = accessory;
+        if (accessory->id) {
+            server->accessory_infos[accessory_idx].aid = accessory->id;
+            if (accessory->id >= aid)
+                aid = accessory->id+1;
+        } else {
+            server->accessory_infos[accessory_idx].aid = aid++;
+        }
+
+        int iid = 1;
+        for (homekit_service_t **service_it = accessory->services; *service_it; service_it++, service_idx++) {
+            homekit_service_t *service = *service_it;
+
+            server->service_infos[service_idx].service = service;
+            if (service->id) {
+                if (service->id >= iid)
+                    iid = service->id+1;
+            } else {
+                server->service_infos[service_idx].iid = iid++;
+            }
+
+            for (homekit_characteristic_t **ch_it = service->characteristics; *ch_it; ch_it++, characteristic_idx++) {
+                homekit_characteristic_t *ch = *ch_it;
+
+                server->characteristic_infos[characteristic_idx].ch = ch;
+                server->characteristic_infos[characteristic_idx].aid = server->accessory_infos[accessory_idx].aid;
+                if (ch->id) {
+                    if (ch->id >= iid)
+                        iid = ch->id+1;
+                } else {
+                    server->characteristic_infos[characteristic_idx].iid = iid++;
+                }
+
+                if (ch->permissions & homekit_permissions_notify) {
+                    server->characteristic_infos[characteristic_idx].notification_id = notification_idx;
+                    server->notifications[notification_idx].characteristic_idx = characteristic_idx;
+                    notification_idx++;
+                }
+            }
+        }
+    }
+
+    qsort(server->accessory_infos,
+          server->accessory_count,
+          sizeof(*server->accessory_infos),
+          (int(*)(const void*, const void*))accessory_info_cmp_accessory);
+
+    qsort(server->service_infos,
+          server->service_count,
+          sizeof(*server->service_infos),
+          (int(*)(const void*, const void*))service_info_cmp_service);
+
+    qsort(server->characteristic_infos,
+          server->characteristic_count,
+          sizeof(*server->characteristic_infos),
+          (int(*)(const void*, const void*))characteristic_info_cmp_characteristic);
+
+    return 0;
+}
+
+
 void homekit_server_init(homekit_server_config_t *config) {
     if (!config->accessories) {
         ERROR("Error initializing HomeKit accessory server: "
@@ -4039,8 +4402,6 @@ void homekit_server_init(homekit_server_config_t *config) {
         }
     }
 
-    homekit_accessories_init(config->accessories);
-
     if (!config->config_number) {
         config->config_number = config->accessories[0]->config_number;
         if (!config->config_number) {
@@ -4060,55 +4421,10 @@ void homekit_server_init(homekit_server_config_t *config) {
     }
     server->config = config;
 
-    uint16_t notification_id = 0;
-    for (homekit_accessory_t **accessory_it = config->accessories; *accessory_it; accessory_it++) {
-        for (homekit_service_t **service_it = (*accessory_it)->services; *service_it; service_it++) {
-            for (homekit_characteristic_t **ch_it = (*service_it)->characteristics; *ch_it; ch_it++) {
-                homekit_characteristic_t *ch = *ch_it;
-
-                if (ch->permissions & homekit_permissions_notify) {
-                    ch->notification_id = notification_id++;
-                }
-            }
-        }
-    }
-
-    server->notify_count = notification_id;
-    server->subscriptions = bitset_new(server->notify_count * HOMEKIT_MAX_CLIENTS);
-    if (!server->subscriptions) {
-        ERROR("Error initializing HomeKit accessory server: "
-              "failed to allocate memory for subscriptions");
+    if (homekit_accessories_init(server)) {
         server_free(server);
         server = NULL;
         return;
-    }
-    server->notifications = calloc(server->notify_count, sizeof(characteristic_notification_info_t));
-    if (!server->notifications) {
-        ERROR("Error initializing HomeKit accessory server: "
-              "failed to allocate memory for notifications info");
-        server_free(server);
-        server = NULL;
-        return;
-    }
-    server->has_notification = bitset_new(server->notify_count);
-    if (!server->has_notification) {
-        ERROR("Error initializing HomeKit accessory server: "
-              "failed to allocate memory for notifications flags");
-        server_free(server);
-        server = NULL;
-        return;
-    }
-
-    for (homekit_accessory_t **accessory_it = config->accessories; *accessory_it; accessory_it++) {
-        for (homekit_service_t **service_it = (*accessory_it)->services; *service_it; service_it++) {
-            for (homekit_characteristic_t **ch_it = (*service_it)->characteristics; *ch_it; ch_it++) {
-                homekit_characteristic_t *ch = *ch_it;
-
-                if (ch->permissions & homekit_permissions_notify) {
-                    server->notifications[ch->notification_id].ch = ch;
-                }
-            }
-        }
     }
 
     if (pdPASS != xTaskCreate(homekit_server_task, "HomeKit Server",
