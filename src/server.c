@@ -2421,6 +2421,8 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         uint16_t aid = context->server->endpoint_params.ids[id_index].aid;
         uint16_t iid = context->server->endpoint_params.ids[id_index].iid;
 
+        id_index++;
+
         CLIENT_DEBUG(context, "Requested characteristic info for %d.%d", aid, iid);
         homekit_characteristic_t *ch = homekit_characteristic_by_aid_and_iid(context->server->config->accessories, aid, iid);
         if (!ch) {
@@ -2432,8 +2434,6 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
             success = false;
             continue;
         }
-
-        id_index++;
     }
 
     if (success) {
