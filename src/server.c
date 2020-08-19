@@ -202,9 +202,6 @@ struct _client_context_t {
 
     bool disconnect;
 
-    homekit_characteristic_t *current_characteristic;
-    homekit_value_t *current_value;
-
     bool encrypted;
     byte read_key[32];
     byte write_key[32];
@@ -666,7 +663,7 @@ void client_unsubscribe_from_characteristic_events(client_context_t *client, con
     bitset_clear(client->server->subscriptions, info->notification_id * HOMEKIT_MAX_CLIENTS + client->id);
 }
 
-void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *value) {
+void write_characteristic_json(json_stream *json, client_context_t *client, const homekit_characteristic_t *ch, characteristic_format_t format, const homekit_value_t *v) {
     characteristic_info_t *ch_info = find_characteristic_info_by_characteristic(client->server, ch);
     if (!ch_info) {
         ERROR("Failed to lookup characteristic info for characteristic \"%s\"", ch->description);
@@ -784,53 +781,51 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     }
 
     if (ch->permissions & homekit_permissions_paired_read) {
-        homekit_value_t v = value ? *value : ch->getter_ex(ch);
-
-        if (v.is_null) {
+        if (v->is_null) {
             // json_string(json, "value"); json_null(json);
         } else if (v.format != ch->format) {
             ERROR("Characteristic value format is different from characteristic format");
         } else {
-            switch(v.format) {
+            switch(v->format) {
                 case homekit_format_bool: {
-                    json_string(json, "value"); json_boolean(json, v.bool_value);
+                    json_string(json, "value"); json_boolean(json, v->bool_value);
                     break;
                 }
                 case homekit_format_uint8: {
-                    json_string(json, "value"); json_uint8(json, v.uint8_value);
+                    json_string(json, "value"); json_uint8(json, v->uint8_value);
                     break;
                 }
                 case homekit_format_uint16: {
-                    json_string(json, "value"); json_uint16(json, v.uint16_value);
+                    json_string(json, "value"); json_uint16(json, v->uint16_value);
                     break;
                 }
                 case homekit_format_uint32: {
-                    json_string(json, "value"); json_uint32(json, v.uint32_value);
+                    json_string(json, "value"); json_uint32(json, v->uint32_value);
                     break;
                 }
                 case homekit_format_uint64: {
-                    json_string(json, "value"); json_uint64(json, v.uint64_value);
+                    json_string(json, "value"); json_uint64(json, v->uint64_value);
                     break;
                 }
                 case homekit_format_int: {
-                    json_string(json, "value"); json_integer(json, v.int_value);
+                    json_string(json, "value"); json_integer(json, v->int_value);
                     break;
                 }
                 case homekit_format_float: {
-                    json_string(json, "value"); json_float(json, v.float_value);
+                    json_string(json, "value"); json_float(json, v->float_value);
                     break;
                 }
                 case homekit_format_string: {
-                    json_string(json, "value"); json_string(json, v.string_value);
+                    json_string(json, "value"); json_string(json, v->string_value);
                     break;
                 }
                 case homekit_format_tlv: {
                     json_string(json, "value");
-                    if (!v.tlv_values) {
+                    if (!v->tlv_values) {
                         json_string(json, "");
                     } else {
                         size_t tlv_size = 0;
-                        tlv_format(v.tlv_values, NULL, &tlv_size);
+                        tlv_format(v->tlv_values, NULL, &tlv_size);
                         if (tlv_size == 0) {
                             json_string(json, "");
                         } else {
@@ -840,7 +835,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                                 json_string(json, "");
                                 break;
                             }
-                            if (tlv_format(v.tlv_values, tlv_data, &tlv_size)) {
+                            if (tlv_format(v->tlv_values, tlv_data, &tlv_size)) {
                                 CLIENT_ERROR(client, "Failed to format TLV characteristic data");
                                 json_string(json, "");
                                 break;
@@ -867,17 +862,17 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                 }
                 case homekit_format_data: {
                     json_string(json, "value");
-                    if (!v.data_value || v.data_size == 0) {
+                    if (!v->data_value || v->data_size == 0) {
                         json_string(json, "");
                     } else {
-                        size_t encoded_data_size = base64_encoded_size(v.data_value, v.data_size);
+                        size_t encoded_data_size = base64_encoded_size(v->data_value, v->data_size);
                         byte *encoded_data = malloc(encoded_data_size + 1);
                         if (!encoded_data) {
                             CLIENT_ERROR(client, "Failed to allocate %d bytes for encoding characteristic data", encoded_data_size + 1);
                             json_string(json, "");
                             break;
                         }
-                        base64_encode(v.data_value, v.data_size, encoded_data);
+                        base64_encode(v->data_value, v->data_size, encoded_data);
                         encoded_data[encoded_data_size] = 0;
 
                         json_string(json, (char*) encoded_data);
@@ -888,11 +883,6 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
                     break;
                 }
             }
-        }
-
-        if (!value) {
-            // called getter to get value, need to free it
-            homekit_value_destruct(&v);
         }
     }
 }
@@ -2587,14 +2577,18 @@ void homekit_server_on_get_accessories(client_context_t *context) {
                 homekit_characteristic_t *ch = *ch_it;
 
                 json_object_start(json);
+
+                homekit_value_t value = ch->getter_ex(ch);
                 write_characteristic_json(
                     json, context, ch,
                       characteristic_format_type
                     | characteristic_format_meta
                     | characteristic_format_perms
                     | characteristic_format_events,
-                    NULL
+                    &value
                 );
+                homekit_value_destruct(&value);
+
                 json_object_end(json);
             }
 
@@ -2691,7 +2685,11 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
         CLIENT_INFO(context, "Requested characteristic info for %d.%d (\"%s\")", aid, iid, ch->description);
 
         json_object_start(json);
-        write_characteristic_json(json, context, ch, context->server->endpoint_params.format, NULL);
+
+        homekit_value_t value = ch->getter_ex(ch);
+        write_characteristic_json(json, context, ch, context->server->endpoint_params.format, &value);
+        homekit_value_destruct(&value);
+
         if (!success) {
             json_string(json, "status"); json_uint8(json, HAPStatus_Success);
         }
@@ -3060,16 +3058,7 @@ void homekit_server_on_update_characteristics(client_context_t *context, const b
             }
 
             ch->setter_ex(ch, h_value);
-
-            if (!h_value.is_null) {
-                context->current_characteristic = ch;
-                context->current_value = &h_value;
-
-                homekit_characteristic_notify(ch, h_value);
-
-                context->current_characteristic = NULL;
-                context->current_value = NULL;
-            }
+            homekit_characteristic_notify(ch, h_value);
         }
 
         cJSON *j_events = cJSON_GetObjectItem(j_ch, "ev");

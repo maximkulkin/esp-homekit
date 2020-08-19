@@ -411,7 +411,7 @@ void homekit_characteristic_default_setter_ex(homekit_characteristic_t *ch, home
         ch->setter(value);
     } else {
         homekit_value_destruct(&ch->value);
-        homekit_value_copy(&ch->value, &value);
+        ch->value = value;
     }
 }
 
