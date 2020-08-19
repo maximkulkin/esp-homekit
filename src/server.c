@@ -783,7 +783,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
     if (ch->permissions & homekit_permissions_paired_read) {
         if (v->is_null) {
             // json_string(json, "value"); json_null(json);
-        } else if (v.format != ch->format) {
+        } else if (v->format != ch->format) {
             ERROR("Characteristic value format is different from characteristic format");
         } else {
             switch(v->format) {
