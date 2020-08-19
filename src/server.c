@@ -1037,8 +1037,18 @@ void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_
             return;
         }
     } else {
-        for (uint8_t i=0; i < n; i++)
-            write(context->socket, data[i], data_sizes[i]);
+        // 5 parts should be enough to send everything at one go in all existing
+        // cases, but just in case implementing chunked sending
+        struct iovec parts[5];
+        for (uint8_t i=0; i < n;) {
+            uint8_t _n = (n - i > 4) ? 4 : n - i;
+            for (uint8_t j=0; j < _n; i++, j++) {
+                parts[j].iov_base = (void *)data[i];
+                parts[j].iov_len = data_sizes[i];
+            }
+
+            lwip_writev(context->socket, parts, _n);
+        }
     }
 }
 
