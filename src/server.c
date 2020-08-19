@@ -125,7 +125,7 @@ typedef struct {
 
 
 typedef struct {
-    uint16_t characteristic_idx;
+    homekit_characteristic_t *ch;
     homekit_value_t value;
 } characteristic_notification_info_t;
 
@@ -3908,8 +3908,9 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             if (!bitset_isset(server->has_notification, nid))
                 continue;
 
+            characteristic_info_t *ch_info = find_characteristic_info_by_characteristic(server, server->notifications[nid].ch);
+
             if (!bitset_isset(server->subscriptions, nid * HOMEKIT_MAX_CLIENTS + context->id)) {
-                characteristic_info_t *ch_info = &server->characteristic_infos[server->notifications[nid].characteristic_idx];
                 CLIENT_DEBUG(context, "Not subscribed to characteristic %d.%d, skipping event", ch_info->aid, ch_info->iid);
                 continue;
             }
@@ -3932,7 +3933,6 @@ void homekit_server_process_notifications(homekit_server_t *server) {
             }
 
             json_object_start(json);
-            characteristic_info_t *ch_info = &server->characteristic_infos[server->notifications[nid].characteristic_idx];
             write_characteristic_json(json, context, ch_info->ch, 0, &server->notifications[nid].value);
             json_object_end(json);
         }
@@ -4341,7 +4341,7 @@ int homekit_accessories_init(homekit_server_t *server) {
 
                 if (ch->permissions & homekit_permissions_notify) {
                     server->characteristic_infos[characteristic_idx].notification_id = notification_idx;
-                    server->notifications[notification_idx].characteristic_idx = characteristic_idx;
+                    server->notifications[notification_idx].ch = ch;
                     notification_idx++;
                 }
             }
