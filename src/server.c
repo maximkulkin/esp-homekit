@@ -153,7 +153,6 @@ typedef struct {
     } endpoint_params;
 
     byte data[1024 + 18];
-    byte decrypted[1024];
 
     char *body;
     size_t body_length;
@@ -3687,12 +3686,12 @@ static void homekit_client_process(client_context_t *context) {
         byte *payload = (byte *)context->server->data;
         size_t payload_size = (size_t)data_len;
 
-        size_t decrypted_size = sizeof(context->server->decrypted);
+        size_t decrypted_size = sizeof(context->server->data) - 2 - 18;
 
         if (context->encrypted) {
             CLIENT_DEBUG(context, "Decrypting data");
 
-            int r = client_decrypt(context, context->server->data, data_len, context->server->decrypted, &decrypted_size);
+            int r = client_decrypt(context, context->server->data, data_len, context->server->data+2, &decrypted_size);
             if (r < 0) {
                 CLIENT_ERROR(context, "Invalid client data");
                 return;
@@ -3703,7 +3702,7 @@ static void homekit_client_process(client_context_t *context) {
             }
             CLIENT_DEBUG(context, "Decrypted %d bytes, available %d", decrypted_size, data_available);
 
-            payload = context->server->decrypted;
+            payload = context->server->data+2;
             payload_size = decrypted_size;
             if (payload_size)
                 print_binary("Decrypted data", payload, payload_size);
