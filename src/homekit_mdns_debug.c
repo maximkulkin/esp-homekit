@@ -108,7 +108,7 @@ uint8_t *mdns_print_answer(uint8_t *data, uint8_t *payload) {
 
     uint16_t answer_type  = mdns_read_u16(data + 0);
     uint16_t answer_class = mdns_read_u16(data + 2);
-    uint32_t answer_ttl   = mdns_read_u32(data + 4);
+//  uint32_t answer_ttl   = mdns_read_u32(data + 4);
     uint16_t answer_len   = mdns_read_u16(data + 8);
     data += 10;
 

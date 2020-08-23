@@ -3759,6 +3759,21 @@ void homekit_server_close_client(homekit_server_t *server, client_context_t *con
 }
 
 
+void homekit_server_close_duplicate_clients(homekit_server_t *server, struct sockaddr_in addr) {
+     struct sockaddr_in old_addr;
+     socklen_t addr_len = sizeof(addr);
+     client_context_t *context = server->clients;
+
+     while (context) {
+         if ( getpeername(context->socket, (struct sockaddr *)&old_addr, &addr_len) == 0 &&
+              (old_addr.sin_addr.s_addr == addr.sin_addr.s_addr) && 
+              (old_addr.sin_port != addr.sin_port) )
+                 context->disconnect = true;
+         context = context->next;
+     }
+ }
+
+
 client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     int s = accept(server->listen_fd, (struct sockaddr *)NULL, (socklen_t *)NULL);
     if (s < 0) {
@@ -3831,6 +3846,8 @@ client_context_t *homekit_server_accept_client(homekit_server_t *server) {
     } else {
         strcpy(address_buffer, "?.?.?.?");
     }
+    
+    homekit_server_close_duplicate_clients(server, addr); //remove old connections with same ip but different port
 
     CLIENT_INFO(context, "Got new client connection from %s", address_buffer);
 
