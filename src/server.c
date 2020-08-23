@@ -83,6 +83,14 @@ typedef enum {
 } characteristic_format_t;
 
 
+typedef enum {
+     ENCRYPTION_STATE_FALSE = 0,
+     ENCRYPTION_STATE_VERIFIED,
+     ENCRYPTION_STATE_GOT_ACCESSORIES,
+     ENCRYPTION_STATE_IN_USE,
+ } ENCRYPTION_STATE;
+
+
 typedef struct {
     Srp *srp;
     byte *public_key;
@@ -201,7 +209,7 @@ struct _client_context_t {
 
     bool disconnect;
 
-    bool encrypted;
+    int  encrypted;
     byte read_key[32];
     byte write_key[32];
     int count_reads;
@@ -471,7 +479,7 @@ client_context_t *client_context_new() {
     c->id = 0;
 
     c->pairing_id = -1;
-    c->encrypted = false;
+    c->encrypted = ENCRYPTION_STATE_FALSE;
     c->count_reads = 0;
     c->count_writes = 0;
 
@@ -1101,6 +1109,20 @@ void send_tlv_error_response(client_context_t *context, int state, TLVError erro
 }
 
 
+void send_tlv_delay_response(client_context_t *context, int state, int delay) {
+    tlv_values_t *response = tlv_new();
+    if (!response) {
+        // TODO: panic?
+        return;
+    }
+    tlv_add_integer_value(response, TLVType_State, 1, state);
+    tlv_add_integer_value(response, TLVType_Error, 1, TLVError_Backoff);
+    tlv_add_integer_value(response, TLVType_RetryDelay, 1, delay);
+
+    send_tlv_response(context, response);
+}
+
+
 void send_tlv_response(client_context_t *context, tlv_values_t *values) {
     CLIENT_DEBUG(context, "Sending TLV response");
     TLV_DEBUG(values);
@@ -1248,6 +1270,8 @@ int homekit_client_send(unsigned char *data, size_t size) {
 void homekit_server_on_identify(client_context_t *context) {
     CLIENT_INFO(context, "Identify");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (context->server->paired) {
         // Already paired
@@ -1969,6 +1993,19 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
         case 1: {
             CLIENT_INFO(context, "Pair Verify Step 1/2");
 
+            int committed=0;
+            client_context_t *c = server->clients;
+            while (c) {
+                if (c->encrypted<ENCRYPTION_STATE_GOT_ACCESSORIES && !c->disconnect) committed++;
+                c = c->next;
+            }
+            if (xPortGetFreeHeapSize()<committed*6000) { //TODO: make this an external value?
+                CLIENT_ERROR(context, "Not enough free heap to commit to %d new clients, delaying this client 2s",committed);
+                send_tlv_delay_response(context, 2, 2); //2 second holdoff
+                context->disconnect = true;
+                break;
+            }
+
             CLIENT_DEBUG(context, "Importing device Curve25519 public key");
             tlv_t *tlv_device_public_key = tlv_get_value(message, TLVType_PublicKey);
             if (!tlv_device_public_key) {
@@ -2503,7 +2540,7 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
 
             context->pairing_id = pairing_id;
             context->permissions = permissions;
-            context->encrypted = true;
+            context->encrypted = ENCRYPTION_STATE_VERIFIED;
 
             HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_CLIENT_VERIFIED);
 
@@ -2615,11 +2652,15 @@ void homekit_server_on_get_accessories(client_context_t *context) {
     json_flush(json);
 
     client_send_chunk(NULL, 0, context);
+    
+    context->encrypted = ENCRYPTION_STATE_GOT_ACCESSORIES;
 }
 
 void homekit_server_on_get_characteristics(client_context_t *context) {
     CLIENT_INFO(context, "Get Characteristics");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (context->server->endpoint_params.ids[0].aid == 0) {
         CLIENT_ERROR(context, "Invalid get characteristics request: missing ID parameter");
@@ -2718,6 +2759,8 @@ void homekit_server_on_get_characteristics(client_context_t *context) {
 void homekit_server_on_update_characteristics(client_context_t *context, const byte *data, size_t size) {
     CLIENT_INFO(context, "Update Characteristics");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     cJSON *json = cJSON_Parse((char *)data);
 
@@ -3159,6 +3202,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
     DEBUG("HomeKit Pairings");
     DEBUG_HEAP();
 
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
+
     tlv_values_t *message = tlv_new();
     if (!message) {
         CLIENT_ERROR(context, "Failed to allocate memory for TLV payload");
@@ -3425,6 +3470,8 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 void homekit_server_on_resource(client_context_t *context) {
     CLIENT_INFO(context, "Resource");
     DEBUG_HEAP();
+
+    context->encrypted = ENCRYPTION_STATE_IN_USE;
 
     if (!context->server->config->on_resource) {
         send_404_response(context);
