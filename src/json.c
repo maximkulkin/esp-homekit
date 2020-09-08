@@ -1,64 +1,39 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
 #include "json.h"
 #include "debug.h"
 
-#define JSON_MAX_DEPTH 30
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 #define DEBUG_STATE(json) \
     DEBUG("State = %d, last JSON output: %s", \
           json->state, json->buffer + MAX(0, (long int)json->pos - 20));
 
-typedef enum {
-    JSON_STATE_START = 1,
-    JSON_STATE_END,
-    JSON_STATE_OBJECT,
-    JSON_STATE_OBJECT_KEY,
-    JSON_STATE_OBJECT_VALUE,
-    JSON_STATE_ARRAY,
-    JSON_STATE_ARRAY_ITEM,
-    JSON_STATE_ERROR,
-} json_state;
 
-typedef enum {
-    JSON_NESTING_OBJECT,
-    JSON_NESTING_ARRAY,
-} json_nesting;
-
-struct json_stream {
-    uint8_t *buffer;
-    size_t size;
-    size_t pos;
-
-    json_state state;
-
-    uint8_t nesting_idx;
-    json_nesting nesting[JSON_MAX_DEPTH];
-
-    json_flush_callback on_flush;
-    void *context;
-};
-
-
-json_stream *json_new(size_t buffer_size, json_flush_callback on_flush, void *context) {
-    json_stream *json = malloc(sizeof(json_stream));
-    json->size = buffer_size;
+void json_init(json_stream *json, uint8_t *buffer, size_t size, json_flush_callback on_flush, void *context) {
+    json->size = size;
     json->pos = 0;
-    json->buffer = malloc(json->size);
+    json->buffer = buffer;
     json->state = JSON_STATE_START;
     json->nesting_idx = 0;
     json->on_flush = on_flush;
     json->context = context;
+}
+
+json_stream *json_new(size_t size, json_flush_callback on_flush, void *context) {
+    json_stream *json = malloc(sizeof(json_stream) + size);
+    if (!json) {
+        return NULL;
+    }
+
+    json_init(json, ((uint8_t*)json) + sizeof(json_stream), size, on_flush, context);
 
     return json;
 }
 
 void json_free(json_stream *json) {
-    free(json->buffer);
     free(json);
 }
 
