@@ -42,6 +42,7 @@
 #include <homekit/homekit.h>
 #include <homekit/characteristics.h>
 #include <homekit/tlv.h>
+#include "tlv_internal.h"
 
 
 #define PORT 5556
@@ -163,6 +164,7 @@ typedef struct {
     bool request_completed;
 
     json_stream json;
+    tlv_stream_t tlv_stream;
 
     SemaphoreHandle_t notification_lock;
 
@@ -242,6 +244,10 @@ homekit_server_t *server_new() {
 
     json_init(&server->json, server->output_buffer, sizeof(server->output_buffer),
               client_send_chunk, NULL);
+    tlv_stream_init(
+        &server->tlv_stream,
+        server->output_buffer, sizeof(server->output_buffer), client_send_chunk, NULL
+    );
 
     server->accessory_count = 0;
     server->accessory_infos = NULL;
@@ -1079,69 +1085,35 @@ typedef struct _client_event {
 } client_event_t;
 
 
-void send_tlv_response(client_context_t *context, tlv_values_t *values);
+static byte tlv_200_response_headers[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: application/pairing+tlv8\r\n"
+    "Transfer-Encoding: chunked\r\n"
+    "Connection: keep-alive\r\n\r\n";
 
-void send_tlv_error_response(client_context_t *context, int state, TLVError error) {
-    tlv_values_t *response = tlv_new();
-    if (!response) {
-        // TODO: panic?
-        return;
-    }
-    tlv_add_integer_value(response, TLVType_State, 1, state);
-    tlv_add_integer_value(response, TLVType_Error, 1, error);
 
-    send_tlv_response(context, response);
+tlv_stream_t *client_start_tlv_response(client_context_t *context) {
+    client_send(context, tlv_200_response_headers, sizeof(tlv_200_response_headers)-1);
+
+    tlv_stream_t *tlv = &context->server->tlv_stream;
+    tlv_stream_set_context(tlv, context);
+    tlv_stream_reset(tlv);
+
+    return tlv;
 }
 
+void client_finish_tlv_response(client_context_t *context) {
+    tlv_stream_flush(&context->server->tlv_stream);
+    client_send_chunk(NULL, 0, context);
+}
 
-void send_tlv_response(client_context_t *context, tlv_values_t *values) {
-    CLIENT_DEBUG(context, "Sending TLV response");
-    TLV_DEBUG(values);
+void send_tlv_error_response(client_context_t *context, int state, TLVError error) {
+    tlv_stream_t *tlv = client_start_tlv_response(context);
 
-    size_t payload_size = 0;
-    tlv_format(values, NULL, &payload_size);
+    tlv_stream_add_integer_value(tlv, TLVType_State, 1, state);
+    tlv_stream_add_integer_value(tlv, TLVType_Error, 1, error);
 
-    byte *payload = malloc(payload_size);
-    if (!payload) {
-        CLIENT_ERROR(context, "Failed to allocate %d bytes for TLV payload", payload_size);
-        return;
-    }
-
-    int r = tlv_format(values, payload, &payload_size);
-    if (r) {
-        CLIENT_ERROR(context, "Failed to format TLV payload (code %d)", r);
-        free(payload);
-        return;
-    }
-
-    tlv_free(values);
-
-    static char *http_headers =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: application/pairing+tlv8\r\n"
-        "Content-Length: %d\r\n"
-        "Connection: keep-alive\r\n\r\n";
-
-    int response_size = strlen(http_headers) + payload_size + 32;
-    char *response = malloc(response_size);
-    // TODO: handle NULL in response
-    int response_len = snprintf(response, response_size, http_headers, payload_size);
-
-    if (response_size - response_len < payload_size + 1) {
-        CLIENT_ERROR(context, "Incorrect response buffer size %d: headers took %d, payload size %d", response_size, response_len, payload_size);
-        free(response);
-        free(payload);
-        return;
-    }
-    memcpy(response+response_len, payload, payload_size);
-    response_len += payload_size;
-
-    free(payload);
-
-    // TODO: Change this to vectorized form
-    client_send(context, (byte *)response, response_len);
-
-    free(response);
+    client_finish_tlv_response(context);
 }
 
 
@@ -1403,24 +1375,16 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 break;
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+            tlv_stream_t *tlv = client_start_tlv_response(context);
 
-                free(salt);
-                pairing_context_free(context->server->pairing_context);
-                context->server->pairing_context = NULL;
+            tlv_stream_add_value(tlv, TLVType_PublicKey, context->server->pairing_context->public_key, context->server->pairing_context->public_key_size);
+            tlv_stream_add_value(tlv, TLVType_Salt, salt, salt_size);
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 2);
 
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-            tlv_add_value(response, TLVType_PublicKey, context->server->pairing_context->public_key, context->server->pairing_context->public_key_size);
-            tlv_add_value(response, TLVType_Salt, salt, salt_size);
-            tlv_add_integer_value(response, TLVType_State, 1, 2);
+            client_finish_tlv_response(context);
 
             free(salt);
 
-            send_tlv_response(context, response);
             break;
         }
         case 3: {
@@ -1480,19 +1444,15 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
 
             r = crypto_srp_get_proof(context->server->pairing_context->srp, server_proof, &server_proof_size);
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
-                free(server_proof);
-                send_tlv_error_response(context, 4, TLVError_Unknown);
-                break;
-            }
-            tlv_add_integer_value(response, TLVType_State, 1, 4);
-            tlv_add_value(response, TLVType_Proof, server_proof, server_proof_size);
+            tlv_stream_t *tlv = client_start_tlv_response(context);
+
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 4);
+            tlv_stream_add_value(tlv, TLVType_Proof, server_proof, server_proof_size);
+
+            client_finish_tlv_response(context);
 
             free(server_proof);
 
-            send_tlv_response(context, response);
             break;
         }
         case 5: {
@@ -1892,23 +1852,16 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 break;
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+            tlv_stream_t *tlv = client_start_tlv_response(context);
 
-                free(encrypted_response_data);
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 6);
+            tlv_stream_add_value(tlv, TLVType_EncryptedData,
+                                 encrypted_response_data,
+                                 encrypted_response_data_size);
 
-                send_tlv_error_response(context, 6, TLVError_Unknown);
-                break;
-            }
-
-            tlv_add_integer_value(response, TLVType_State, 1, 6);
-            tlv_add_value(response, TLVType_EncryptedData,
-                          encrypted_response_data, encrypted_response_data_size);
+            client_finish_tlv_response(context);
 
             free(encrypted_response_data);
-
-            send_tlv_response(context, response);
 
             pairing_context_free(context->server->pairing_context);
             context->server->pairing_context = NULL;
@@ -2218,25 +2171,18 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 break;
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
-                free(encrypted_response_data);
-                free(session_key);
-                free(shared_secret);
-                free(my_key_public);
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-            tlv_add_integer_value(response, TLVType_State, 1, 2);
-            tlv_add_value(response, TLVType_PublicKey,
-                          my_key_public, my_key_public_size);
-            tlv_add_value(response, TLVType_EncryptedData,
-                          encrypted_response_data, encrypted_response_data_size);
+            tlv_stream_t *tlv = client_start_tlv_response(context);
+
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 2);
+            tlv_stream_add_value(tlv, TLVType_PublicKey,
+                                 my_key_public, my_key_public_size);
+            tlv_stream_add_value(tlv, TLVType_EncryptedData,
+                                 encrypted_response_data,
+                                 encrypted_response_data_size);
+
+            client_finish_tlv_response(context);
 
             free(encrypted_response_data);
-
-            send_tlv_response(context, response);
 
             if (context->verify_context)
                 pair_verify_context_free(context->verify_context);
@@ -2482,17 +2428,11 @@ void homekit_server_on_pair_verify(client_context_t *context, const byte *data, 
                 break;
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for TLV response");
+            tlv_stream_t *tlv = client_start_tlv_response(context);
 
-                send_tlv_error_response(context, 4, TLVError_Unknown);
-                break;
-            }
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 4);
 
-            tlv_add_integer_value(response, TLVType_State, 1, 4);
-
-            send_tlv_response(context, response);
+            client_finish_tlv_response(context);
 
             context->pairing_id = pairing_id;
             context->permissions = permissions;
@@ -3275,15 +3215,11 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 HOMEKIT_NOTIFY_EVENT(context->server, HOMEKIT_EVENT_PAIRING_ADDED);
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for response TLV data");
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-            tlv_add_integer_value(response, TLVType_State, 1, 2);
+            tlv_stream_t *tlv = client_start_tlv_response(context);
 
-            send_tlv_response(context, response);
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 2);
+
+            client_finish_tlv_response(context);
 
             break;
         }
@@ -3351,15 +3287,12 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 }
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for response TLV data");
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-            tlv_add_integer_value(response, TLVType_State, 1, 2);
+            tlv_stream_t *tlv = client_start_tlv_response(context);
 
-            send_tlv_response(context, response);
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 2);
+
+            client_finish_tlv_response(context);
+
             break;
         }
         case TLVMethod_ListPairings: {
@@ -3371,13 +3304,9 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
                 break;
             }
 
-            tlv_values_t *response = tlv_new();
-            if (!response) {
-                CLIENT_ERROR(context, "Failed to allocate memory for response TLV data");
-                send_tlv_error_response(context, 2, TLVError_Unknown);
-                break;
-            }
-            tlv_add_integer_value(response, TLVType_State, 1, 2);
+            tlv_stream_t *tlv = client_start_tlv_response(context);
+
+            tlv_stream_add_integer_value(tlv, TLVType_State, 1, 2);
 
             bool first = true;
 
@@ -3390,20 +3319,21 @@ void homekit_server_on_pairings(client_context_t *context, const byte *data, siz
 
             while (!homekit_storage_next_pairing(&it, &pairing)) {
                 if (!first) {
-                    tlv_add_value(response, TLVType_Separator, NULL, 0);
+                    tlv_stream_add_value(tlv, TLVType_Separator, NULL, 0);
                 }
                 size_t public_key_size = sizeof(public_key);
                 r = crypto_ed25519_export_public_key(&pairing.device_key, public_key, &public_key_size);
 
-                tlv_add_string_value(response, TLVType_Identifier, pairing.device_id);
-                tlv_add_value(response, TLVType_PublicKey, public_key, public_key_size);
-                tlv_add_integer_value(response, TLVType_Permissions, 1, pairing.permissions);
+                tlv_stream_add_string_value(tlv, TLVType_Identifier, pairing.device_id);
+                tlv_stream_add_value(tlv, TLVType_PublicKey, public_key, public_key_size);
+                tlv_stream_add_integer_value(tlv, TLVType_Permissions, 1, pairing.permissions);
 
                 first = false;
             }
             homekit_storage_pairing_iterator_done(&it);
 
-            send_tlv_response(context, response);
+            client_finish_tlv_response(context);
+
             break;
         }
         default: {
