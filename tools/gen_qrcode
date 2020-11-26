@@ -40,25 +40,24 @@ def gen_homekit_setup_uri(category, password, setup_id, version=0, reserved=0, f
 
 
 def gen_homekit_qrcode(setup_uri, password):
-    code = qrcode.QRCode(version=2, border=0, box_size=12,
+    code = qrcode.QRCode(version=2, border=0, box_size=12.5,
                          error_correction=qrcode.constants.ERROR_CORRECT_Q)
     code.add_data(setup_uri)
 
     # open template
     img = PIL.Image.open(os.path.join(script_dir, 'qrcode.png'))
     # add QR code to it
-    img.paste(code.make_image().get_image(), (50, 180))
+    img.paste(code.make_image().get_image().resize((320, 320)), (40, 180))
 
     # add password digits
     setup_code = password.replace('-', '')
 
-
-    font = PIL.ImageFont.truetype(os.path.join(script_dir, 'Roboto-Bold.ttf'), 56)
+    font = PIL.ImageFont.truetype(os.path.join(script_dir, 'SF-Mono-Bold.otf'), 69)
     draw = PIL.ImageDraw.Draw(img)
 
     for i in range(4):
-        draw.text((170 + i*50, 35), setup_code[i], font=font, fill=(0, 0, 0))
-        draw.text((170 + i*50, 95), setup_code[i+4], font=font, fill=(0, 0, 0))
+        draw.text((173 + i*49, 38-13), setup_code[i], font=font, fill=(0, 0, 0))
+        draw.text((173 + i*49, 88), setup_code[i+4], font=font, fill=(0, 0, 0))
 
     return img
 
