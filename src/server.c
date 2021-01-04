@@ -886,6 +886,60 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
 }
 
 
+int client_send_plain(
+    client_context_t *context,
+    uint8_t n, const byte **part_data, size_t *part_sizes
+) {
+    if (!context)
+        return -1;
+
+    /*
+    // 5 parts should be enough to send everything at one go in all existing
+    // cases, but just in case implementing chunked sending
+    struct iovec parts[5];
+    for (uint8_t i=0; i < n; i++) {
+        uint8_t _n = n - i;
+        if (_n > countof(parts))
+            _n = countof(parts);
+
+        for (uint8_t j=0; j < _n; i++, j++) {
+            parts[j].iov_base = (void *)data[i];
+            parts[j].iov_len = data_sizes[i];
+        }
+
+        lwip_writev(context->socket, parts, _n);
+    }
+    */
+    byte buffer[1024];
+
+    uint8_t part_index = 0;
+    size_t part_offset = 0;
+
+    while (part_index < n) {
+        size_t chunk_size = 0;
+        while (part_index < n && chunk_size < sizeof(buffer)) {
+            size_t extra_size = part_sizes[part_index] - part_offset;
+            if (chunk_size + extra_size > sizeof(buffer)) {
+                extra_size = sizeof(buffer) - chunk_size;
+            }
+
+            memcpy(buffer+chunk_size, part_data[part_index]+part_offset, extra_size);
+
+            chunk_size += extra_size;
+            part_offset += extra_size;
+            if (part_offset >= part_sizes[part_index]) {
+                part_index++;
+                part_offset = 0;
+            }
+        }
+
+        write(context->socket, buffer, chunk_size);
+    }
+
+    return 0;
+}
+
+
 int client_send_encryptedv(
     client_context_t *context,
     uint8_t n, const byte **part_data, size_t *part_sizes
@@ -1035,17 +1089,10 @@ void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_
             return;
         }
     } else {
-        // 5 parts should be enough to send everything at one go in all existing
-        // cases, but just in case implementing chunked sending
-        struct iovec parts[5];
-        for (uint8_t i=0; i < n;) {
-            uint8_t _n = (n - i > 4) ? 4 : n - i;
-            for (uint8_t j=0; j < _n; i++, j++) {
-                parts[j].iov_base = (void *)data[i];
-                parts[j].iov_len = data_sizes[i];
-            }
-
-            lwip_writev(context->socket, parts, _n);
+        int r = client_send_plain(context, n, data, data_sizes);
+        if (r) {
+            CLIENT_ERROR(context, "Failed to send response (code %d)", r);
+            return;
         }
     }
 }
