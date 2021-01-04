@@ -1095,7 +1095,15 @@ void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_
     if (context->encrypted) {
         client_send_encryptedv(context, n, data, data_sizes);
     } else {
-        client_send_plainv(context, n, data, data_sizes);
+        if (n == 1) {
+            int r = write(context->socket, data[0], data_sizes[0]);
+            if (r < 0) {
+                CLIENT_ERROR(context, "Failed to send response (errno %d)", errno);
+                return;
+            }
+        } else {
+            client_send_plainv(context, n, data, data_sizes);
+        }
     }
 }
 
