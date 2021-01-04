@@ -886,7 +886,7 @@ void write_characteristic_json(json_stream *json, client_context_t *client, cons
 }
 
 
-int client_send_plain(
+int client_send_plainv(
     client_context_t *context,
     uint8_t n, const byte **part_data, size_t *part_sizes
 ) {
@@ -933,7 +933,11 @@ int client_send_plain(
             }
         }
 
-        write(context->socket, buffer, chunk_size);
+        int r = write(context->socket, buffer, chunk_size);
+        if (r == -1) {
+            CLIENT_ERROR(context, "Failed to write response (errno %d)", errno);
+            return -1;
+        }
     }
 
     return 0;
@@ -992,11 +996,15 @@ int client_send_encryptedv(
             encrypted+2, &available
         );
         if (r) {
-            ERROR("Failed to chacha encrypt payload (code %d)", r);
+            CLIENT_ERROR(context, "Failed to chacha encrypt payload (code %d)", r);
             return -1;
         }
 
-        write(context->socket, encrypted, available + 2);
+        r = write(context->socket, encrypted, available + 2);
+        if (r == -1) {
+            CLIENT_ERROR(context, "Failed to write response (errno %d)", errno);
+            return -1;
+        }
     }
 
     return 0;
@@ -1085,17 +1093,9 @@ void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_
 #endif
 
     if (context->encrypted) {
-        int r = client_send_encryptedv(context, n, data, data_sizes);
-        if (r) {
-            CLIENT_ERROR(context, "Failed to encrypt response (code %d)", r);
-            return;
-        }
+        client_send_encryptedv(context, n, data, data_sizes);
     } else {
-        int r = client_send_plain(context, n, data, data_sizes);
-        if (r) {
-            CLIENT_ERROR(context, "Failed to send response (code %d)", r);
-            return;
-        }
+        client_send_plainv(context, n, data, data_sizes);
     }
 }
 
