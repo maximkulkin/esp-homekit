@@ -1072,13 +1072,15 @@ void client_sendv(client_context_t *context, uint8_t n, const byte **data, size_
         data_size += data_sizes[i];
 
     if (data_size < 4096) {
-        char *payload = binary_to_stringv(n, data, data_sizes);
+        char *payload = data_to_stringv(n, data, data_sizes);
         if (payload) {
             CLIENT_DEBUG(context, "Sending payload: %s", payload);
             free(payload);
         } else {
             CLIENT_DEBUG(context, "Sending payload of size %d", data_size);
         }
+    } else {
+        CLIENT_DEBUG(context, "Sending payload of size %d", data_size);
     }
 #endif
 

@@ -29,8 +29,15 @@ typedef unsigned char byte;
 
 #endif
 
+char *data_to_string(const byte *data, size_t size);
+char *data_to_stringv(uint8_t n, const byte **datas, size_t *sizes);
+
+char *text_to_string(const byte *data, size_t size);
+char *text_to_stringv(uint8_t n, const byte **datas, size_t *sizes);
+
 char *binary_to_string(const byte *data, size_t size);
 char *binary_to_stringv(uint8_t n, const byte **datas, size_t *sizes);
+
 void print_binary(const char *prompt, const byte *data, size_t size);
 
 #endif // __DEBUG_H__
