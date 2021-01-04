@@ -290,7 +290,7 @@ void tlv_stream_reset(tlv_stream_t *tlv) {
 
 void tlv_stream_put(tlv_stream_t *tlv, uint8_t b) {
     tlv->buffer[tlv->pos++] = b;
-    if (tlv->pos >= tlv->size - 1)
+    if (tlv->pos >= tlv->size)
         tlv_stream_flush(tlv);
 }
 
@@ -311,7 +311,7 @@ int tlv_stream_add_value(tlv_stream_t *tlv, uint8_t type, const uint8_t *data, s
         uint8_t _chunk_size = chunk_size;
         while (_chunk_size) {
             size_t _size = _chunk_size;
-            if (_chunk_size > tlv->size - tlv->pos)
+            if (_size > tlv->size - tlv->pos)
                 _size = tlv->size - tlv->pos;
 
             memcpy(&tlv->buffer[tlv->pos], data, _size);
