@@ -815,7 +815,7 @@
     .unit = homekit_unit_celsius, \
     .permissions = homekit_permissions_paired_read \
                  | homekit_permissions_notify, \
-    .min_value = (float[]) {0}, \
+    .min_value = (float[]) {-50}, \
     .max_value = (float[]) {100}, \
     .min_step = (float[]) {0.1}, \
     .value = HOMEKIT_FLOAT_(_value), \
