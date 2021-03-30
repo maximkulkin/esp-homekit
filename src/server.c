@@ -3698,6 +3698,15 @@ static void homekit_client_process(client_context_t *context) {
             &context->server->parser, &homekit_http_parser_settings,
             (char *)payload, payload_size
         );
+
+        CLIENT_DEBUG(context, "Parser state: %d, error %s: %s", context->server->parser.state,
+                        http_errno_name(context->server->parser.http_errno),
+                        http_errno_description(context->server->parser.http_errno));
+        if ( context->server->parser.state == 1 ) {
+                CLIENT_DEBUG(context, "Reset parser");
+                http_parser_init(&context->server->parser, HTTP_REQUEST);
+        }
+
     } while (data_available && !context->server->request_completed);
 
     current_client_context = NULL;
