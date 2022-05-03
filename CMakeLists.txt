@@ -1,15 +1,16 @@
 idf_component_register(
     SRCS
-        "src/json.c"
-        "src/storage.c"
-        "src/tlv.c"
-        "src/server.c"
-        "src/debug.c"
         "src/accessories.c"
         "src/base64.c"
+        "src/bitset.c"
+        "src/crypto.c"
+        "src/debug.c"
+        "src/json.c"
         "src/port.c"
         "src/query_params.c"
-        "src/crypto.c"
+        "src/server.c"
+        "src/storage.c"
+        "src/tlv.c"
     INCLUDE_DIRS include
     PRIV_INCLUDE_DIRS src
     REQUIRES wolfssl json http-parser mdns spi_flash
