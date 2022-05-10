@@ -39,21 +39,37 @@ def gen_homekit_setup_uri(category, password, setup_id, version=0, reserved=0, f
     return 'X-HM://%s%s' % (''.join(reversed(encodedPayload)), setup_id)
 
 
-def gen_homekit_qrcode(setup_uri, password):
+def gen_homekit_qrcode(setup_uri, password, transparent=False):
+    back_color = 'transparent' if transparent else 'white'
+
+    # open template
+    template = PIL.Image.open(os.path.join(script_dir, 'qrcode.png'))
+
+    img = PIL.Image.new('RGBA', template.size, None)
+    draw = PIL.ImageDraw.Draw(img)
+
+    if not transparent:
+        draw.rounded_rectangle((5, 5, img.width-5, img.height-5), 60, fill='white')
+
+    img.paste(template, (0, 0), template)
+
+    # add QR code to it
     code = qrcode.QRCode(version=2, border=0, box_size=12.5,
                          error_correction=qrcode.constants.ERROR_CORRECT_Q)
     code.add_data(setup_uri)
-
-    # open template
-    img = PIL.Image.open(os.path.join(script_dir, 'qrcode.png'))
-    # add QR code to it
-    img.paste(code.make_image().get_image().resize((320, 320)), (40, 180))
+    img.paste(
+        code.
+            make_image(fill_color='black',
+                       back_color='transparent' if transparent else 'white').
+            get_image().
+            resize((320, 320)),
+        (40, 180)
+    )
 
     # add password digits
     setup_code = password.replace('-', '')
 
     font = PIL.ImageFont.truetype(os.path.join(script_dir, 'SF-Mono-Bold.otf'), 69)
-    draw = PIL.ImageDraw.Draw(img)
 
     for i in range(4):
         draw.text((173 + i*49, 38-13), setup_code[i], font=font, fill=(0, 0, 0))
@@ -64,6 +80,7 @@ def gen_homekit_qrcode(setup_uri, password):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--transparent', action='store_true')
     parser.add_argument('category', type=int)
     parser.add_argument('password')
     parser.add_argument('setup_id')
@@ -79,7 +96,9 @@ def main():
 
     setupURI = gen_homekit_setup_uri(args.category, args.password, args.setup_id)
 
-    qrcodeImage = gen_homekit_qrcode(setupURI, args.password)
+    qrcodeImage = gen_homekit_qrcode(
+        setupURI, args.password, transparent=args.transparent
+    )
 
     qrcodeImage.save(args.output_image)
 
