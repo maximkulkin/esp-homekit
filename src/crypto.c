@@ -360,6 +360,12 @@ int crypto_ed25519_generate(ed25519_key *key) {
         return r;
 
     WC_RNG rng;
+    r = wc_InitRng(&rng);
+    if (r) {
+        DEBUG("Failed to initialize RNG (code %d)", r);
+        return r;
+    }
+
     r = wc_ed25519_make_key(&rng, ED25519_KEY_SIZE, key);
     if (r) {
         DEBUG("Failed to generate key (code %d)", r);
@@ -479,10 +485,16 @@ int crypto_curve25519_generate(curve25519_key *key) {
     }
 
     WC_RNG rng;
+    r = wc_InitRng(&rng);
+    if (r) {
+        DEBUG("Failed to initialize RNG (code %d)", r);
+        return r;
+    }
+
     r = wc_curve25519_make_key(&rng, 32, key);
     if (r) {
         crypto_curve25519_done(key);
-        return -1;
+        return r;
     }
 
     return 0;
