@@ -1371,10 +1371,15 @@ void homekit_server_on_pair_setup(client_context_t *context, const byte *data, s
                 context->server->config->password_callback(password);
             }
 
-            crypto_srp_init(
-                context->server->pairing_context->srp,
-                "Pair-Setup", password
-            );
+            if (crypto_srp_init(context->server->pairing_context->srp, "Pair-Setup", password)) {
+                CLIENT_ERROR(context, "Failed to initialize SRP");
+
+                pairing_context_free(context->server->pairing_context);
+                context->server->pairing_context = NULL;
+
+                send_tlv_error_response(context, 2, TLVError_Unknown);
+                break;
+            }
 
             if (context->server->pairing_context->public_key) {
                 free(context->server->pairing_context->public_key);
