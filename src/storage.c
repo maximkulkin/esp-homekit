@@ -72,10 +72,13 @@ int homekit_storage_reset() {
 }
 
 
-void homekit_storage_save_accessory_id(const char *accessory_id) {
+int homekit_storage_save_accessory_id(const char *accessory_id) {
     if (!spiflash_write(ACCESSORY_ID_ADDR, (byte *)accessory_id, ACCESSORY_ID_SIZE)) {
         ERROR("Failed to write accessory ID to HomeKit storage");
+        return -1;
     }
+
+    return 0;
 }
 
 
@@ -104,19 +107,21 @@ int homekit_storage_load_accessory_id(char *data) {
     return 0;
 }
 
-void homekit_storage_save_accessory_key(const ed25519_key *key) {
+int homekit_storage_save_accessory_key(const ed25519_key *key) {
     byte key_data[ACCESSORY_KEY_SIZE];
     size_t key_data_size = sizeof(key_data);
     int r = crypto_ed25519_export_key(key, key_data, &key_data_size);
     if (r) {
         ERROR("Failed to export accessory key (code %d)", r);
-        return;
+        return -1;
     }
 
     if (!spiflash_write(ACCESSORY_KEY_ADDR, key_data, key_data_size)) {
         ERROR("Failed to write accessory key to HomeKit storage");
-        return;
+        return -2;
     }
+
+    return 0;
 }
 
 int homekit_storage_load_accessory_key(ed25519_key *key) {
