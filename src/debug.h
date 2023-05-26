@@ -21,11 +21,11 @@ typedef unsigned char byte;
 
 #ifdef ESP_IDF
 
-#define DEBUG_HEAP() DEBUG("Free heap: %d", esp_get_free_heap_size());
+#define DEBUG_HEAP() DEBUG("Free heap: %lu", esp_get_free_heap_size());
 
 #else
 
-#define DEBUG_HEAP() DEBUG("Free heap: %d", xPortGetFreeHeapSize());
+#define DEBUG_HEAP() DEBUG("Free heap: %lu", xPortGetFreeHeapSize());
 
 #endif
 
