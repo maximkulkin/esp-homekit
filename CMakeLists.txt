@@ -26,7 +26,7 @@ if (${IDF_VERSION_MAJOR} LESS 5)
     list(APPEND homekit_COMPILE_OPTIONS -DSPIFLASH_BASE_ADDR=${CONFIG_HOMEKIT_SPI_FLASH_BASE_ADDR})
 else()
     list(APPEND homekit_SRCS "src/port_storage_partition.c")
-    list(APPEND homekit_REQUIRES esp_partition)
+    list(APPEND homekit_REQUIRES esp_partition esp_hw_support esp_system)
 endif()
 
 idf_component_register(

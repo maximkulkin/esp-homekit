@@ -33,6 +33,8 @@ void homekit_overclock_end() {
 #ifdef ESP_IDF
 
 #include <string.h>
+#include <esp_random.h>
+#include <esp_system.h>
 
 uint32_t homekit_random() {
     return esp_random();
