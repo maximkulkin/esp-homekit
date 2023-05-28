@@ -4,13 +4,35 @@ Apple HomeKit accessory server library for
 
 See [esp-homekit-demo](https://github.com/maximkulkin/esp-homekit-demo) for examples.
 
-## Building for ESP-IDF >= 4.0
+## Building for ESP-IDF 4.x
 
 In ESP-IDF >= 4.0 there is a SPI flash write protection that checks if area written
 to is inside writable parition. Haven't figured out yet how esp-homekit can modify
 parition table automatically, so for the time being you need to disable that check in
 menuconfig: go to Component config -> SPI Flash driver -> Write to dangerous flash
 regions and set it to "Allowed".
+
+## Building for ESP-IDF >= 5.0
+
+You need to add a custom partition of type data and subtype "homekit"
+and at least 4KB (0x1000) in size for HomeKit data storage. Put this into
+partitions.csv file in your project:
+
+```
+# ESP-IDF Partition Table
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+phy_init, data, phy,     0xe000,  0x1000,
+homekit,  data, homekit, 0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 1M,
+```
+
+Enable custom partitions in project configuration (sdkconfig):
+
+```
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+```
 
 ## QR code pairing
 

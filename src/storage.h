@@ -1,6 +1,8 @@
 #ifndef __STORAGE_H__
 #define __STORAGE_H__
 
+#include <stdbool.h>
+
 #include "pairing.h"
 
 int homekit_storage_reset();

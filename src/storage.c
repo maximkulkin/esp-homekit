@@ -7,73 +7,23 @@
 #include "port.h"
 
 #include "storage.h"
+#include <esp_partition.h>
 
 #pragma GCC diagnostic ignored "-Wunused-value"
 
-#ifndef SPIFLASH_BASE_ADDR
-#define SPIFLASH_BASE_ADDR 0x200000
-#endif
-
-#define MAGIC_OFFSET           0
 #define ACCESSORY_ID_OFFSET    4
 #define ACCESSORY_KEY_OFFSET   32
 #define PAIRINGS_OFFSET        128
-
-#define MAGIC_ADDR           (SPIFLASH_BASE_ADDR + MAGIC_OFFSET)
-#define ACCESSORY_ID_ADDR    (SPIFLASH_BASE_ADDR + ACCESSORY_ID_OFFSET)
-#define ACCESSORY_KEY_ADDR   (SPIFLASH_BASE_ADDR + ACCESSORY_KEY_OFFSET)
-#define PAIRINGS_ADDR        (SPIFLASH_BASE_ADDR + PAIRINGS_OFFSET)
 
 #define MAX_PAIRINGS 16
 
 #define ACCESSORY_KEY_SIZE  64
 
-const char magic1[] = "HAP";
 
-
-int homekit_storage_init() {
-    char magic[sizeof(magic1)];
-    memset(magic, 0, sizeof(magic));
-
-    if (!spiflash_read(MAGIC_ADDR, (byte *)magic, sizeof(magic))) {
-        ERROR("Failed to read HomeKit storage magic");
-    }
-
-    if (strncmp(magic, magic1, sizeof(magic1))) {
-        INFO("Formatting HomeKit storage at 0x%x", SPIFLASH_BASE_ADDR);
-        if (!spiflash_erase_sector(SPIFLASH_BASE_ADDR)) {
-            ERROR("Failed to erase HomeKit storage");
-            return -1;
-        }
-
-        strncpy(magic, magic1, sizeof(magic));
-        if (!spiflash_write(MAGIC_ADDR, (byte *)magic, sizeof(magic))) {
-            ERROR("Failed to write HomeKit storage magic");
-            return -1;
-        }
-
-        return 1;
-    }
-
-    return 0;
-}
-
-
-int homekit_storage_reset() {
-    byte blank[sizeof(magic1)];
-    memset(blank, 0, sizeof(blank));
-
-    if (!spiflash_write(MAGIC_ADDR, blank, sizeof(blank))) {
-        ERROR("Failed to reset HomeKit storage");
-        return -1;
-    }
-
-    return homekit_storage_init();
-}
-
+static const char pairing_magic[] = "HAP";
 
 int homekit_storage_save_accessory_id(const char *accessory_id) {
-    if (!spiflash_write(ACCESSORY_ID_ADDR, (byte *)accessory_id, ACCESSORY_ID_SIZE)) {
+    if (homekit_storage_write(ACCESSORY_ID_OFFSET, (byte *)accessory_id, ACCESSORY_ID_SIZE)) {
         ERROR("Failed to write accessory ID to HomeKit storage");
         return -1;
     }
@@ -88,7 +38,7 @@ static char ishex(unsigned char c) {
 }
 
 int homekit_storage_load_accessory_id(char *data) {
-    if (!spiflash_read(ACCESSORY_ID_ADDR, (byte *)data, ACCESSORY_ID_SIZE)) {
+    if (homekit_storage_read(ACCESSORY_ID_OFFSET, data, ACCESSORY_ID_SIZE)) {
         ERROR("Failed to read accessory ID from HomeKit storage");
         return -1;
     }
@@ -116,7 +66,7 @@ int homekit_storage_save_accessory_key(const ed25519_key *key) {
         return -1;
     }
 
-    if (!spiflash_write(ACCESSORY_KEY_ADDR, key_data, key_data_size)) {
+    if (homekit_storage_write(ACCESSORY_KEY_OFFSET, key_data, key_data_size)) {
         ERROR("Failed to write accessory key to HomeKit storage");
         return -2;
     }
@@ -126,7 +76,7 @@ int homekit_storage_save_accessory_key(const ed25519_key *key) {
 
 int homekit_storage_load_accessory_key(ed25519_key *key) {
     byte key_data[ACCESSORY_KEY_SIZE];
-    if (!spiflash_read(ACCESSORY_KEY_ADDR, key_data, sizeof(key_data))) {
+    if (homekit_storage_read(ACCESSORY_KEY_OFFSET, key_data, sizeof(key_data))) {
         ERROR("Failed to read accessory key from HomeKit storage");
         return -1;
     }
@@ -143,7 +93,7 @@ int homekit_storage_load_accessory_key(ed25519_key *key) {
 
 // TODO: figure out alignment issues
 typedef struct {
-    char magic[sizeof(magic1)];
+    char magic[sizeof(pairing_magic)];
     byte permissions;
     char device_id[DEVICE_ID_SIZE];
     byte device_public_key[32];
@@ -155,16 +105,25 @@ typedef struct {
 bool homekit_storage_can_add_pairing() {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(magic1)))
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            ERROR("WARNING: Failed to read pairing %d", i);
+        }
+
+        if (strncmp(data.magic, pairing_magic, sizeof(pairing_magic)))
             return true;
     }
     return false;
 }
 
 static int compact_data() {
-    byte *data = malloc(SPI_FLASH_SECTOR_SIZE);
-    if (!spiflash_read(SPIFLASH_BASE_ADDR, data, SPI_FLASH_SECTOR_SIZE)) {
+    size_t storage_size = homekit_storage_size();
+    if (storage_size == 0) {
+        ERROR("Failed to compact HomeKit storage: HomeKit storage is not initialized");
+        return -1;
+    }
+
+    byte *data = malloc(storage_size);
+    if (homekit_storage_read(0, data, storage_size)) {
         free(data);
         ERROR("Failed to compact HomeKit storage: sector data read error");
         return -1;
@@ -173,9 +132,9 @@ static int compact_data() {
     int next_pairing_idx = 0;
     for (int i=0; i<MAX_PAIRINGS; i++) {
         pairing_data_t *pairing_data = (pairing_data_t *)&data[PAIRINGS_OFFSET + sizeof(pairing_data_t)*i];
-        if (!strncmp(pairing_data->magic, magic1, sizeof(magic1))) {
+        if (!strncmp(pairing_data->magic, pairing_magic, sizeof(pairing_magic))) {
             if (i != next_pairing_idx) {
-                memcpy(&data[PAIRINGS_ADDR + sizeof(pairing_data_t)*next_pairing_idx],
+                memcpy(&data[PAIRINGS_OFFSET + sizeof(pairing_data_t)*next_pairing_idx],
                        pairing_data, sizeof(*pairing_data));
             }
             next_pairing_idx++;
@@ -193,7 +152,7 @@ static int compact_data() {
         free(data);
         return -1;
     }
-    if (!spiflash_write(SPIFLASH_BASE_ADDR, data, PAIRINGS_OFFSET + sizeof(pairing_data_t)*next_pairing_idx)) {
+    if (homekit_storage_write(0, data, PAIRINGS_OFFSET + sizeof(pairing_data_t)*next_pairing_idx)) {
         ERROR("Failed to compact HomeKit storage: error writing compacted data");
         free(data);
         return -1;
@@ -208,7 +167,10 @@ static int find_empty_block() {
     byte data[sizeof(pairing_data_t)];
 
     for (int i=0; i<MAX_PAIRINGS; i++) {
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, data, sizeof(data));
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*i, data, sizeof(data))) {
+            ERROR("Failed to read pairing %d", i);
+            continue;
+        }
 
         bool block_empty = true;
         for (int j=0; j<sizeof(data); j++)
@@ -239,7 +201,7 @@ int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device
     pairing_data_t data;
 
     memset(&data, 0, sizeof(data));
-    strncpy(data.magic, magic1, sizeof(data.magic));
+    strncpy(data.magic, pairing_magic, sizeof(data.magic));
     data.permissions = permissions;
     strncpy(data.device_id, device_id, sizeof(data.device_id));
     size_t device_public_key_size = sizeof(data.device_public_key);
@@ -251,7 +213,7 @@ int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device
         return -1;
     }
 
-    if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*next_block_idx, (byte *)&data, sizeof(data))) {
+    if (homekit_storage_write(PAIRINGS_OFFSET + sizeof(data)*next_block_idx, (byte *)&data, sizeof(data))) {
         ERROR("Failed to write pairing info to HomeKit storage");
         return -1;
     }
@@ -263,8 +225,11 @@ int homekit_storage_add_pairing(const char *device_id, const ed25519_key *device
 int homekit_storage_update_pairing(const char *device_id, byte permissions) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(data.magic)))
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            ERROR("Failed to read pairing %d", i);
+            continue;
+        }
+        if (strncmp(data.magic, pairing_magic, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
@@ -281,13 +246,13 @@ int homekit_storage_update_pairing(const char *device_id, byte permissions) {
 
             data.permissions = permissions;
 
-            if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*next_block_idx, (byte *)&data, sizeof(data))) {
+            if (homekit_storage_write(PAIRINGS_OFFSET + sizeof(data)*next_block_idx, (byte *)&data, sizeof(data))) {
                 ERROR("Failed to write pairing info to HomeKit storage");
                 return -1;
             }
 
             memset(&data, 0, sizeof(data));
-            if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            if (homekit_storage_write(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
                 ERROR("Failed to update pairing: error erasing old record from HomeKit storage");
                 return -2;
             }
@@ -302,13 +267,16 @@ int homekit_storage_update_pairing(const char *device_id, byte permissions) {
 int homekit_storage_remove_pairing(const char *device_id) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(data.magic)))
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            ERROR("Failed to read pairing %d", i);
+            continue;
+        }
+        if (strncmp(data.magic, pairing_magic, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
             memset(&data, 0, sizeof(data));
-            if (!spiflash_write(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            if (homekit_storage_write(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
                 ERROR("Failed to remove pairing from HomeKit storage");
                 return -2;
             }
@@ -323,8 +291,11 @@ int homekit_storage_remove_pairing(const char *device_id) {
 int homekit_storage_find_pairing(const char *device_id, pairing_t *pairing) {
     pairing_data_t data;
     for (int i=0; i<MAX_PAIRINGS; i++) {
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*i, (byte *)&data, sizeof(data));
-        if (strncmp(data.magic, magic1, sizeof(data.magic)))
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*i, (byte *)&data, sizeof(data))) {
+            ERROR("Failed to read pairing %d", i);
+            continue;
+        }
+        if (strncmp(data.magic, pairing_magic, sizeof(data.magic)))
             continue;
 
         if (!strncmp(data.device_id, device_id, sizeof(data.device_id))) {
@@ -362,8 +333,11 @@ int homekit_storage_next_pairing(pairing_iterator_t *it, pairing_t *pairing) {
     while(it->idx < MAX_PAIRINGS) {
         int id = it->idx++;
 
-        spiflash_read(PAIRINGS_ADDR + sizeof(data)*id, (byte *)&data, sizeof(data));
-        if (!strncmp(data.magic, magic1, sizeof(data.magic))) {
+        if (homekit_storage_read(PAIRINGS_OFFSET + sizeof(data)*id, (byte *)&data, sizeof(data))) {
+            ERROR("Failed to read pairing %d", id);
+            continue;
+        }
+        if (!strncmp(data.magic, pairing_magic, sizeof(data.magic))) {
             crypto_ed25519_init(&pairing->device_key);
             int r = crypto_ed25519_import_public_key(&pairing->device_key, data.device_public_key, sizeof(data.device_public_key));
             if (r) {
