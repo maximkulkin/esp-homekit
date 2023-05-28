@@ -34,6 +34,7 @@ ifdef component_compile_rules
     homekit_INC_DIR = $(homekit_ROOT)/include $(homekit_ROOT)/src
     homekit_SRC_DIR = $(homekit_ROOT)/src
     homekit_OBJEXCLUDE = \
+        src/port_mdns_idf.o \
         src/port_storage_partition.o
 
     $(eval $(call component_compile_rules,homekit))
@@ -96,6 +97,7 @@ else
     COMPONENT_OBJEXCLUDE = \
         src/homekit_mdns.o \
         src/homekit_mdns_debug.o \
+        src/port_mdns_custom.o \
         src/port_storage_partition.o
 
 erase_homekit_data:
