@@ -7,7 +7,6 @@
 #include "port.h"
 
 #include "storage.h"
-#include <esp_partition.h>
 
 #pragma GCC diagnostic ignored "-Wunused-value"
 

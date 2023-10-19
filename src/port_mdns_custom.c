@@ -1,6 +1,8 @@
+#include <stdarg.h>
 #include <FreeRTOS.h>
 #include <timers.h>
 
+#include <espressif/esp_common.h>
 #include <lwip/inet.h>
 #include "homekit_mdns.h"
 

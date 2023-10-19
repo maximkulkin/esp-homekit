@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "port.h"
@@ -5,7 +6,7 @@
 #ifdef ESP_OPEN_RTOS
 
 #include <esp/hwrand.h>
-#include <espressif/esp_common.h>
+#include <espressif/esp_system.h>
 #include <esplibs/libmain.h>
 
 
